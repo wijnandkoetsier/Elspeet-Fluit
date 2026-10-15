@@ -159,6 +159,28 @@ function matchDays() {
   return [...new Set(state.data.matches.map((m) => m.date))].sort();
 }
 
+// One compact row in a day list: time | teams + labels / details | action.
+function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) {
+  const labels = [m.category && `<span class="label">${esc(m.category)}</span>`, m.external_ref && '<span class="label knvb">KNVB</span>'].filter(Boolean).join('');
+  return `
+    <div class="mrow ${m.external_ref ? 'dim' : ''}" ${attrs}>
+      <div class="t">${esc(time)}</div>
+      <div class="info">
+        <div class="teams">${esc(m.home)}${m.away ? ` – ${esc(m.away)}` : ''}${labels}</div>
+        <div class="sub">${sub}</div>
+      </div>
+      ${action}
+    </div>`;
+}
+
+function dayList(title, pill, rows) {
+  return `
+    <section class="card day-list">
+      <header class="day-head"><h2>${title}</h2>${pill}</header>
+      ${rows}
+    </section>`;
+}
+
 function planning(view) {
   const { matches, referees, availability } = state.data;
   const days = matchDays();
@@ -171,49 +193,42 @@ function planning(view) {
   const day = state.day;
   const dayMatches = matches.filter((m) => m.date === day).sort((a, b) => a.time.localeCompare(b.time));
   const own = dayMatches.filter((m) => !m.external_ref);
-  const assigned = own.filter((m) => m.referee_id);
-  const unpublished = assigned.filter((m) => !m.published);
+  const open = own.filter((m) => !m.referee_id);
+  const unpublished = own.filter((m) => m.referee_id && !m.published);
   const missing = referees.filter((r) => r.active !== false && !availability.some((a) => a.referee_id === r.id && a.date === day));
   const refName = (id) => referees.find((r) => r.id === id)?.name || '?';
 
+  const rows = dayMatches.map((m) => {
+    const parts = m.field ? [esc(m.field)] : [];
+    let action = '';
+    if (m.external_ref) {
+      parts.push('KNVB stelt aan');
+    } else if (m.referee_id) {
+      parts.push(`<span class="st ${m.published ? 'pub' : 'concept'}">${esc(refName(m.referee_id))}<small>${m.published ? 'gepubliceerd' : 'concept'}</small></span>`);
+      action = `<button class="btn pill-btn" data-assign="${m.id}">Wijzig</button>`;
+    } else {
+      const n = candidates(m, state.data).filter((c) => c.status === 'ok').length;
+      parts.push(`<span class="st ${n ? 'ok' : 'none'}">${n ? `${n} beschikbaar` : 'niemand beschikbaar'}</span>`);
+      action = `<button class="btn pill-btn assign" data-assign="${m.id}">Toewijzen</button>`;
+    }
+    return matchRow(m, { sub: parts.join('<span class="sep">·</span>'), action });
+  }).join('');
+
+  const pill = open.length ? `<span class="pill open">${open.length} open</span>` : '<span class="pill done">Alles ingevuld</span>';
+
   view.innerHTML = `
     <div class="chips scroll">${days.map((d) => `<button class="chip ${d === day ? 'on' : ''} ${d < today ? 'past' : ''}" data-day="${d}">${fmtDate(d)}</button>`).join('')}</div>
-    <section class="card">
-      <h2>${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
-      <div class="stats">
-        <div><b>${own.length}</b><span>te fluiten</span></div>
-        <div><b>${assigned.length}</b><span>toegewezen</span></div>
-        <div><b>${assigned.length - unpublished.length}</b><span>gepubliceerd</span></div>
-      </div>
-      <div class="actions">
-        <button class="btn" id="propose">✨ Voorstel maken</button>
-        <button class="btn primary" id="publish" ${unpublished.length ? '' : 'disabled'}>Publiceren (${unpublished.length})</button>
-        <button class="btn ghost" id="export">⬇︎ Export</button>
-      </div>
-      ${missing.length ? `<details class="missing"><summary>${missing.length} scheidsrechter(s) nog niets ingevuld</summary>
-        <p>${missing.map((r) => esc(r.name)).join(', ')}</p>
-        ${missing.some((r) => r.email) ? `<a class="btn small" href="${remindLink(missing, day)}">✉️ Herinnering mailen</a>` : ''}
-      </details>` : '<p class="muted">Iedereen heeft beschikbaarheid ingevuld.</p>'}
-    </section>
-    <div class="list">
-      ${dayMatches.map((m) => {
-        const avail = candidates(m, state.data).filter((c) => c.status === 'ok').length;
-        let refHtml;
-        if (m.external_ref) refHtml = '<span class="tag knvb">KNVB stelt aan</span>';
-        else if (m.referee_id) refHtml = `<span class="tag ${m.published ? 'pub' : 'concept'}">${esc(refName(m.referee_id))} · ${m.published ? 'gepubliceerd' : 'concept'}</span>`;
-        else refHtml = `<span class="tag open">Open · ${avail} beschikbaar</span>`;
-        return `
-          <article class="card match ${m.external_ref ? 'dim' : ''}">
-            <div class="time">${esc(m.time)}<small>${fromMin(matchEnd(m) % 1440)}</small></div>
-            <div class="body">
-              <div class="teams">${esc(m.home)}${m.away ? ` – ${esc(m.away)}` : ''}</div>
-              <div class="meta">${[m.field, m.category].filter(Boolean).map(esc).join(' · ')}</div>
-              ${refHtml}
-            </div>
-            ${m.external_ref ? '' : `<button class="btn small" data-assign="${m.id}">${m.referee_id ? 'Wijzig' : 'Toewijzen'}</button>`}
-          </article>`;
-      }).join('')}
-    </div>`;
+    <div class="actions top">
+      <button class="btn small" id="propose">✨ Voorstel maken</button>
+      <button class="btn small ghost" id="export">⬇︎ Export</button>
+    </div>
+    ${missing.length ? `<details class="card missing"><summary>${missing.length} scheidsrechter(s) nog niets ingevuld</summary>
+      <p>${missing.map((r) => esc(r.name)).join(', ')}</p>
+      ${missing.some((r) => r.email) ? `<a class="btn small" href="${remindLink(missing, day)}">✉️ Herinnering mailen</a>` : ''}
+    </details>` : ''}
+    ${dayList(fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }), pill, rows)}
+    ${unpublished.length ? `<div class="publish-space"></div>
+      <div class="publish-bar"><button class="btn primary" id="publish">Publiceren (${unpublished.length})</button></div>` : ''}`;
 
   view.querySelectorAll('[data-day]').forEach((b) => b.onclick = () => { state.day = b.dataset.day; render(); });
   view.querySelectorAll('[data-assign]').forEach((b) => b.onclick = () => assignSheet(b.dataset.assign));
@@ -224,7 +239,8 @@ function planning(view) {
       for (const p of prop) await store.updateMatches([p.matchId], { referee_id: p.refereeId, published: false });
     }, `${prop.length} wedstrijd(en) ingevuld als concept. Controleer en publiceer.`);
   };
-  $('#publish').onclick = () => act(() => store.updateMatches(unpublished.map((m) => m.id), { published: true }),
+  const pub = $('#publish');
+  if (pub) pub.onclick = () => act(() => store.updateMatches(unpublished.map((m) => m.id), { published: true }),
     'Planning gepubliceerd. Scheidsrechters zien hun aanstelling nu in de app.');
   $('#export').onclick = () => exportDay(day, dayMatches, refName);
 }
@@ -284,16 +300,15 @@ function wedstrijden(view) {
       <button class="btn" id="import">📥 CSV importeren</button>
       <label class="toggle"><input type="checkbox" id="past" ${showPast ? 'checked' : ''}> Ook verleden</label>
     </div>
-    ${Object.entries(byDay).map(([d, ms]) => `
-      <h3 class="day">${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
-      ${ms.map((m) => `
-        <article class="card match tap" data-edit="${m.id}">
-          <div class="time">${esc(m.time)}</div>
-          <div class="body">
-            <div class="teams">${esc(m.home)}${m.away ? ` – ${esc(m.away)}` : ''}</div>
-            <div class="meta">${[m.field, m.category, m.external_ref ? 'KNVB' : ''].filter(Boolean).map(esc).join(' · ')}</div>
-          </div>
-        </article>`).join('')}`).join('') || '<section class="card empty"><p>Geen komende wedstrijden.</p></section>'}`;
+    ${Object.entries(byDay).map(([d, ms]) => dayList(
+      fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' }),
+      `<span class="pill">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>`,
+      ms.map((m) => matchRow(m, {
+        sub: [m.field, `${m.duration || 90} min`].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
+        action: '<span class="chev" aria-hidden="true">›</span>',
+        attrs: `data-edit="${m.id}" role="button" tabindex="0"`,
+      })).join(''),
+    )).join('') || '<section class="card empty"><p>Geen komende wedstrijden.</p></section>'}`;
   $('#add-match').onclick = () => matchForm({ date: state.day || today, time: '10:00', duration: 60 });
   $('#import').onclick = importSheet;
   $('#past').onchange = (e) => { state.showPast = e.target.checked; render(); };
@@ -424,14 +439,12 @@ function mijn(view) {
     <h2 class="hello">Hoi ${esc(store.user.name.split(' ')[0])}</h2>
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
     ${todo.length ? `<a class="card warn tap block" href="#beschikbaarheid">📅 Vul je beschikbaarheid in voor ${todo.length} dag(en) →</a>` : ''}
-    <h3 class="day">Komende wedstrijden</h3>
-    ${upcoming.map((m) => `
-      <article class="card match">
-        <div class="time">${esc(m.time)}<small>${fmtDate(m.date)}</small></div>
-        <div class="body"><div class="teams">${esc(m.home)}${m.away ? ` – ${esc(m.away)}` : ''}</div>
-          <div class="meta">${[m.field, m.category].filter(Boolean).map(esc).join(' · ')}</div></div>
-        <button class="btn small ghost" data-ics="${m.id}" title="Zet in agenda">📆</button>
-      </article>`).join('') || '<section class="card empty"><p>Nog geen gepubliceerde aanstellingen.</p></section>'}
+    ${upcoming.length ? dayList('Komende wedstrijden', `<span class="pill done">${upcoming.length}</span>`,
+      upcoming.map((m) => matchRow(m, {
+        sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
+        action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
+      })).join(''))
+      : '<section class="card empty"><p>Nog geen gepubliceerde aanstellingen.</p></section>'}
     <h3 class="day">Seizoen ${label}</h3>
     <section class="card">
       <div class="stats"><div><b>${season.length}</b><span>gefloten</span></div><div><b>${upcoming.length}</b><span>gepland</span></div></div>

@@ -220,10 +220,65 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .cand.current { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
 
 .toast {
-  position: fixed; left: 50%; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 12px); z-index: 30;
-  transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .2s;
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 5rem); z-index: 30;
+  transform: translate(-50%, -20px); opacity: 0; pointer-events: none; transition: .2s;
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 600;
   max-width: calc(100% - 32px); font-size: .9rem;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.error { background: var(--red); color: #fff; }
+
+/* Wedstrijdlijst per speeldag: één blok, compacte regels */
+.day-list { padding: 0; overflow: hidden; }
+.day-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; background: var(--soft); border-bottom: 1px solid var(--line);
+}
+.day-head h2 { margin: 0; font-size: 1rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
+.pill {
+  flex: none; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 4px 10px; border-radius: 999px; background: var(--card); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line);
+}
+.pill.open { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.pill.done { background: var(--brand-soft); color: var(--brand); box-shadow: none; }
+.mrow {
+  display: grid; grid-template-columns: 3.2em minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  padding: 12px 14px;
+}
+.mrow + .mrow { border-top: 1px solid var(--line); }
+.mrow.dim { opacity: .55; }
+.mrow[data-edit] { cursor: pointer; }
+.mrow[data-edit]:active { background: var(--soft); }
+.mrow .t { font-weight: 800; color: var(--brand); font-variant-numeric: tabular-nums; }
+.mrow .teams { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.label {
+  display: inline-block; margin-left: 6px; padding: 1px 5px; border-radius: 4px; vertical-align: .1em;
+  font-size: .66rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  color: var(--muted); box-shadow: inset 0 0 0 1px var(--line);
+}
+.label.knvb { color: var(--text); background: var(--soft); box-shadow: none; }
+.mrow .sub { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 3px; font-size: .85rem; color: var(--muted); }
+.sep { color: var(--line); }
+.st { font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+.st::before { content: ""; width: .5em; height: .5em; border-radius: 50%; background: currentColor; }
+.st.ok, .st.pub { color: var(--brand); }
+.st.none { color: var(--muted); }
+.st.concept { color: var(--text); }
+.st small { font-weight: 500; color: var(--muted); font-size: .8em; }
+.st.concept::before { background: var(--accent); box-shadow: 0 0 0 1px var(--text); }
+.btn.pill-btn { min-height: 36px; padding: 6px 14px; font-size: .85rem; border-radius: 999px; }
+.btn.pill-btn.assign { background: var(--accent-soft); border-color: transparent; }
+.chev { font-size: 1.4rem; color: var(--muted); line-height: 1; }
+.card.missing { padding: 12px 14px; }
+.card.missing p { margin: 8px 0; }
+.publish-space { height: 4.5rem; }
+.publish-bar {
+  position: fixed; left: 0; right: 0; z-index: 4;
+  bottom: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px));
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+  background: linear-gradient(to bottom, transparent, var(--bg) 35%);
+}
+.publish-bar .btn {
+  display: flex; width: 100%; max-width: 688px; margin: 0 auto; min-height: 52px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: .06em; font-weight: 800;
+}
