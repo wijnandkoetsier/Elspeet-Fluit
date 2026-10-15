@@ -1,7 +1,8 @@
-import { SUPABASE_URL, SUPABASE_ANON_KEY, CLUB_NAME, CATEGORIES } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, CLUB_NAME, CATEGORIES } from './config.js';
 import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
+  assignmentIssue,
 } from './logic.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -11,7 +12,7 @@ const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short' })
   new Date(d + 'T12:00:00').toLocaleDateString('nl-NL', opts);
 
 let store;
-const state = { data: { matches: [], referees: [], availability: [] }, day: null, installPrompt: null };
+const state = { data: { matches: [], referees: [], availability: [], notifications: [] }, day: null, installPrompt: null, login: null };
 
 // ---------- Tekstgrootte (per toestel) ----------
 const TEXT_SIZES = [['klein', 'Klein', 14], ['normaal', 'Normaal', 16], ['groot', 'Groot', 18], ['extra', 'Extra groot', 20]];
@@ -79,20 +80,29 @@ const ICONS = {
   prev: svg('<path d="M15 5l-7 7 7 7"/>'),
   next: svg('<path d="M9 5l7 7-7 7"/>'),
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
+  bell: svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
+  more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
+  warn: svg('<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5h.01"/>'),
 };
+// Tabs per role. Hidden routes are reachable via the "Meer" page and light up their parent tab.
 const ROUTES = {
   planner: [
     ['planning', 'Planning', ICONS.planning],
     ['wedstrijden', 'Wedstrijden', ICONS.ball],
     ['scheidsrechters', 'Scheidsen', ICONS.people],
-    ['profiel', 'Instellingen', ICONS.settings],
+    ['meldingen', 'Meldingen', ICONS.bell],
+    ['meer', 'Meer', ICONS.more],
   ],
   referee: [
     ['mijn', 'Mijn fluiten', ICONS.whistle],
     ['beschikbaarheid', 'Beschikbaar', ICONS.calendar],
+    ['meldingen', 'Meldingen', ICONS.bell],
     ['profiel', 'Instellingen', ICONS.settings],
   ],
 };
+const HIDDEN = { planner: { mijn: 'meer', beschikbaarheid: 'meer', profiel: 'meer' }, referee: {} };
+
+const unreadCount = () => state.data.notifications.filter((n) => !n.read_at).length;
 
 function render() {
   const user = store.user;
@@ -105,12 +115,17 @@ function render() {
     bindLogin();
     return;
   }
-  const routes = ROUTES[user.role] || ROUTES.referee;
+  const role = user.role === 'planner' ? 'planner' : 'referee';
+  const routes = ROUTES[role];
+  const hidden = HIDDEN[role];
   let route = location.hash.replace(/^#\/?/, '');
-  if (!routes.some(([r]) => r === route)) route = routes[0][0];
+  if (!routes.some(([r]) => r === route) && !hidden[route]) route = routes[0][0];
+  const activeTab = hidden[route] || route;
+  const unread = unreadCount();
   nav.innerHTML = routes.map(([r, label, icon]) =>
-    `<a href="#${r}" class="${r === route ? 'active' : ''}"><span>${icon}</span>${label}</a>`).join('');
-  const views = { planning, wedstrijden, scheidsrechters, mijn, beschikbaarheid, profiel };
+    `<a href="#${r}" class="${r === activeTab ? 'active' : ''}"><span>${icon}${r === 'meldingen' && unread ? `<b class="badge">${unread > 9 ? '9+' : unread}</b>` : ''}</span>${label}</a>`).join('');
+  try { unread ? navigator.setAppBadge?.(unread) : navigator.clearAppBadge?.(); } catch {}
+  const views = { planning, wedstrijden, scheidsrechters, mijn, beschikbaarheid, profiel, meldingen, meer };
   view.innerHTML = '';
   views[route](view);
 }
@@ -118,33 +133,45 @@ function render() {
 // ---------- Login ----------
 function loginView() {
   if (store.mode === 'demo') {
-    const refs = state.data.referees.length ? state.data.referees : [];
+    const people = state.people || [];
     return `
       <section class="card login">
-        <h2>Welkom 👋</h2>
+        <h2>Welkom</h2>
         <p>Dit is de <b>demo-modus</b>: gegevens blijven op dit toestel. Koppel Supabase in <code>js/config.js</code> om te delen met je club.</p>
-        <button class="btn primary block" data-login="planner">Inloggen als planner</button>
+        <button class="btn primary block" data-login="planner">Inloggen als planner (Daan)</button>
         <div class="row">
-          <select id="demo-ref">${refs.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>
+          <select id="demo-ref" aria-label="Scheidsrechter">${people.filter((r) => !r.is_planner).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>
           <button class="btn" data-login="referee">Als scheidsrechter</button>
         </div>
+      </section>`;
+  }
+  const l = state.login;
+  if (l?.step === 'code') {
+    return `
+      <section class="card login">
+        <h2>Vul je code in</h2>
+        <p>We hebben een e-mail gestuurd naar <b>${esc(l.email)}</b> met een code van 6 cijfers.</p>
+        <form id="code-form">
+          <input name="token" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" class="code-input" aria-label="Code">
+          <button class="btn primary block">Inloggen</button>
+        </form>
+        <button class="btn ghost block" id="code-back">Ander e-mailadres of nieuwe code</button>
       </section>`;
   }
   return `
     <section class="card login">
       <h2>Inloggen</h2>
-      <p>Vul je e-mailadres in. Je krijgt een link om in te loggen, zonder wachtwoord.</p>
+      <p>Vul het e-mailadres in dat bij de club bekend is. Je krijgt een code van 6 cijfers, zonder wachtwoord.</p>
       <form id="login-form">
-        <input type="email" name="email" required placeholder="naam@voorbeeld.nl" autocomplete="email">
-        <button class="btn primary block">Stuur inloglink</button>
+        <input type="email" name="email" required placeholder="naam@voorbeeld.nl" autocomplete="email" value="${esc(l?.email || '')}" aria-label="E-mailadres">
+        <button class="btn primary block">Stuur code</button>
       </form>
-      <p id="login-msg" class="muted"></p>
     </section>`;
 }
 
 function bindLogin() {
   if (store.mode === 'demo') {
-    if (!state.data.referees.length) store.loadAll().then((d) => { state.data = d; render(); });
+    if (!state.people) store.demoPeople().then((p) => { state.people = p; render(); });
     document.querySelectorAll('[data-login]').forEach((b) => b.onclick = () =>
       act(async () => {
         await store.signIn({ role: b.dataset.login, refereeId: $('#demo-ref')?.value });
@@ -152,11 +179,21 @@ function bindLogin() {
       }));
     return;
   }
-  $('#login-form').onsubmit = (e) => {
+  const lf = $('#login-form');
+  if (lf) lf.onsubmit = (e) => {
     e.preventDefault();
-    const email = new FormData(e.target).get('email');
-    act(async () => { const r = await store.signIn({ email }); $('#login-msg').textContent = r.message; });
+    const email = new FormData(e.target).get('email').trim();
+    act(async () => { await store.signIn({ email }); state.login = { step: 'code', email }; render(); }, 'Code verstuurd. Kijk in je mail.');
   };
+  const cf = $('#code-form');
+  if (cf) {
+    cf.onsubmit = (e) => {
+      e.preventDefault();
+      const token = new FormData(e.target).get('token').trim();
+      act(async () => { await store.verifyCode({ email: state.login.email, token }); state.login = null; location.hash = ''; });
+    };
+    $('#code-back').onclick = () => { state.login = { email: state.login.email }; render(); };
+  }
 }
 
 // ---------- Planner: planning ----------
@@ -181,7 +218,7 @@ function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) 
 function dayList(title, pill, rows) {
   return `
     <section class="card day-list">
-      <header class="day-head"><h2>${title}</h2>${pill}</header>
+      <header class="day-head"><h2>${title}</h2><span class="pills">${pill}</span></header>
       ${rows}
     </section>`;
 }
@@ -214,12 +251,13 @@ function planning(view) {
   const tile = (d) => {
     const ms = matches.filter((m) => m.date === d);
     const hasOpen = ms.some((m) => !m.external_ref && !m.referee_id);
+    const hasIssue = ms.some((m) => assignmentIssue(m, state.data));
     const label = d === today ? 'Vandaag' : d === firstSat ? 'Deze zaterdag' : fmtDate(d, { weekday: 'short' });
     return `<button class="day-tile ${d === day ? 'on' : ''} ${d < today ? 'past' : ''}" data-day="${d}">
       <span class="dl">${label}</span>
       <b>${fmtDate(d, { day: 'numeric', month: 'short' }).replace('.', '')}</b>
       <span class="dn">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>
-      ${hasOpen ? '<i class="open-dot" title="Open wedstrijden"></i>' : ''}
+      <span class="dots">${hasIssue ? '<i class="issue-dot" title="Probleem met aanstelling"></i>' : ''}${hasOpen ? '<i class="open-dot" title="Open wedstrijden"></i>' : ''}</span>
     </button>`;
   };
 
@@ -233,8 +271,10 @@ function planning(view) {
     if (m.external_ref) {
       parts.push('KNVB stelt aan');
     } else if (m.referee_id) {
-      parts.push(`<span class="st ${m.published ? 'pub' : 'concept'}">${esc(refName(m.referee_id))}<small>${m.published ? 'gepubliceerd' : 'concept'}</small></span>`);
-      action = `<button class="btn pill-btn" data-assign="${m.id}">Wijzig</button>`;
+      const issue = assignmentIssue(m, state.data);
+      parts.push(`<span class="st ${issue ? 'issue' : m.published ? 'pub' : 'concept'}">${esc(refName(m.referee_id))}<small>${m.published ? 'gepubliceerd' : 'concept'}</small></span>`);
+      if (issue) parts.push(`<span class="issue-text">${ICONS.warn}${esc(issue.join(', '))}</span>`);
+      action = `<button class="btn pill-btn ${issue ? 'assign' : ''}" data-assign="${m.id}">${issue ? 'Oplossen' : 'Wijzig'}</button>`;
     } else {
       const n = candidates(m, state.data).filter((c) => c.status === 'ok').length;
       parts.push(`<span class="st ${n ? 'ok' : 'none'}">${n ? `${n} beschikbaar` : 'niemand beschikbaar'}</span>`);
@@ -243,7 +283,8 @@ function planning(view) {
     return matchRow(m, { sub: parts.join('<span class="sep">·</span>'), action });
   }).join('') || `<p class="muted list-empty">${dayMatches.length ? 'Geen wedstrijden in deze selectie.' : 'Geen wedstrijden op deze dag.'}</p>`;
 
-  const pill = !own.length ? '' : open.length ? `<span class="pill open">${open.length} open</span>` : '<span class="pill done">Alles ingevuld</span>';
+  const issues = own.filter((m) => assignmentIssue(m, state.data)).length;
+  const pill = !own.length ? '' : `${issues ? `<span class="pill issue">${issues} ${issues === 1 ? 'probleem' : 'problemen'}</span>` : ''}${open.length ? `<span class="pill open">${open.length} open</span>` : issues ? '' : '<span class="pill done">Alles ingevuld</span>'}`;
 
   view.innerHTML = `
     <section class="card date-nav">
@@ -300,7 +341,7 @@ function dayAvailability(day) {
   return groups;
 }
 
-function availRow({ r, a, assigned }) {
+function availRow({ r, a, assigned }, editable = false) {
   const hours = a?.available
     ? (a.start_time || a.end_time ? `${a.start_time || 'begin'} – ${a.end_time || 'eind'}` : 'Hele dag')
     : a ? 'Niet beschikbaar' : 'Nog niets ingevuld';
@@ -308,7 +349,7 @@ function availRow({ r, a, assigned }) {
   const full = a?.available && a.max_matches && assigned >= a.max_matches;
   const st = !a ? 'none' : !a.available ? 'no' : full ? 'full' : assigned ? 'busy' : 'free';
   return `
-    <div class="arow">
+    <div class="arow ${editable ? 'tap' : ''}" ${editable ? `data-edit-av="${r.id}" role="button" tabindex="0"` : ''}>
       <div class="avatar">${esc(initials(r.name))}</div>
       <div class="info"><b>${esc(r.name)}</b><small>${esc(hours)}${extra ? ` · ${esc(extra)}` : ''}</small></div>
       <i class="adot ${st}" title="${{ free: 'Vrij', busy: 'Al aangesteld, nog ruimte', full: 'Maximum bereikt', no: 'Niet beschikbaar', none: 'Onbekend' }[st]}"></i>
@@ -332,10 +373,11 @@ function whoCanReferee(day) {
 
 function availabilitySheet(day) {
   const g = dayAvailability(day);
-  const block = (title, list) => list.length ? `<h4 class="sheet-sub">${title} (${list.length})</h4>${list.map(availRow).join('')}` : '';
+  const block = (title, list) => list.length ? `<h4 class="sheet-sub">${title} (${list.length})</h4>${list.map((x) => availRow(x, true)).join('')}` : '';
   const withMail = g.none.filter((x) => x.r.email).map((x) => x.r);
   sheet(`
     <h3>Beschikbaarheid ${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+    <p class="muted">Tik op een naam om de beschikbaarheid voor die persoon in te vullen.</p>
     <div class="who">
       ${block('Beschikbaar', g.yes)}
       ${block('Niet beschikbaar', g.no)}
@@ -343,7 +385,49 @@ function availabilitySheet(day) {
     </div>
     ${withMail.length ? `<a class="btn block" href="${remindLink(withMail, day)}">✉️ Herinnering mailen (${withMail.length})</a>
       <p class="muted">Werkt dit niet? Mail dan zelf naar: <span class="select">${withMail.map((r) => esc(r.email)).join(', ')}</span></p>` : ''}
-  `);
+  `, (el, close) => {
+    el.querySelectorAll('[data-edit-av]').forEach((row) => row.onclick = () => { close(); availEditor(row.dataset.editAv, day); });
+  });
+}
+
+// Planner fills in availability on behalf of someone (also for referees without an account).
+function availEditor(refereeId, day) {
+  const r = state.data.referees.find((x) => x.id === refereeId);
+  const a = state.data.availability.find((x) => x.referee_id === refereeId && x.date === day);
+  let choice = a ? (a.available ? 'yes' : 'no') : 'none';
+  sheet(`
+    <h3>${esc(r.name)}</h3>
+    <p class="muted">${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+    <div class="seg three" id="av-choice">
+      <button data-c="yes">✓ Beschikbaar</button><button data-c="no">✕ Niet</button><button data-c="none">Onbekend</button>
+    </div>
+    <div class="row small" id="av-times">
+      <label>Van<input type="time" id="av-start" value="${esc(a?.start_time || '')}"></label>
+      <label>Tot<input type="time" id="av-end" value="${esc(a?.end_time || '')}"></label>
+      <label>Max<select id="av-max">${['', 1, 2, 3, 4].map((x) => `<option value="${x}" ${String(a?.max_matches ?? '') === String(x) ? 'selected' : ''}>${x || '–'}</option>`).join('')}</select></label>
+    </div>
+    <p class="field-error" id="av-err" hidden></p>
+    <button class="btn primary block" id="av-save">Opslaan</button>`, (el, close) => {
+    const paint = () => {
+      el.querySelectorAll('[data-c]').forEach((b) => { b.className = b.dataset.c === choice ? `on ${choice}` : ''; });
+      $('#av-times', el).hidden = choice !== 'yes';
+    };
+    el.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { choice = b.dataset.c; paint(); });
+    paint();
+    $('#av-save', el).onclick = () => {
+      const start = $('#av-start', el).value, end = $('#av-end', el).value;
+      if (choice === 'yes' && start && end && end <= start) {
+        const err = $('#av-err', el); err.textContent = 'De eindtijd moet later zijn dan de begintijd.'; err.hidden = false; return;
+      }
+      close();
+      if (choice === 'none') return act(() => store.deleteAvailability(refereeId, day), 'Beschikbaarheid gewist');
+      act(() => store.saveAvailability({
+        referee_id: refereeId, date: day, available: choice === 'yes',
+        start_time: choice === 'yes' ? start : '', end_time: choice === 'yes' ? end : '',
+        max_matches: choice === 'yes' ? (Number($('#av-max', el).value) || null) : null,
+      }), `Opgeslagen voor ${r.name}`);
+    };
+  });
 }
 
 function remindLink(refs, day) {
@@ -378,6 +462,7 @@ function assignSheet(matchId) {
   `, (el, close) => {
     el.querySelectorAll('[data-ref]').forEach((b) => b.onclick = async () => {
       const c = list.find((x) => x.referee.id === b.dataset.ref);
+      if (c.referee.id === m.referee_id) return close();
       if (c.status === 'no' && !await ask(`${c.referee.name}: ${c.reasons.join(', ')}. Toch toewijzen?`, 'Toch toewijzen')) return;
       close();
       act(() => store.updateMatches([m.id], { referee_id: c.referee.id, published: false }), `${c.referee.name} toegewezen (concept).`);
@@ -484,11 +569,11 @@ function scheidsrechters(view) {
         <article class="card ref tap ${r.active === false ? 'dim' : ''}" data-edit="${r.id}">
           <div class="avatar">${esc(initials(r.name))}</div>
           <div class="body"><b>${esc(r.name)}</b>
-            <div class="meta">${r.user_id || store.mode === 'demo' && r.email ? '📱 account' : 'geen account'}${(r.pref_categories || []).length ? ' · graag ' + esc(r.pref_categories.join(', ')) : ''}</div></div>
+            <div class="meta">${r.is_planner ? '<span class="label">Planner</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length ? ' · graag ' + esc(r.pref_categories.join(', ')) : ''}</div></div>
           <div class="count">${counts[r.id] || 0}<small>${season}</small></div>
         </article>`).join('') || '<section class="card empty"><p>Nog geen scheidsrechters.</p></section>'}
     </div>
-    ${store.mode === 'cloud' ? '<p class="muted pad">Scheidsrechters met een e-mailadres worden automatisch gekoppeld zodra ze voor het eerst inloggen.</p>' : ''}`;
+    <p class="muted pad">Alleen wie hier met een e-mailadres staat, kan inloggen. Deel daarna de link naar de app.</p>`;
   $('#add-ref').onclick = () => refForm({ name: '', email: '', active: true, pref_categories: [], avoid_categories: [] });
   $('#export-season').onclick = () => {
     const rows = [['Scheidsrechter', `Wedstrijden ${season}`]];
@@ -506,7 +591,9 @@ function refForm(r) {
     <form id="rf" class="form">
       <label>Naam<input name="name" required value="${esc(r.name)}"></label>
       <label>E-mail <small class="muted">(nodig om in te loggen)</small><input type="email" name="email" value="${esc(r.email)}"></label>
-      <label class="check"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Actief</label>
+      <label class="check"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Actief (kan worden ingepland)</label>
+      ${r.id ? `<label class="check"><input type="checkbox" name="is_planner" ${r.is_planner ? 'checked' : ''} ${r.user_id ? '' : 'disabled'}> Planner
+        ${r.user_id ? '' : '<small class="muted">(kan pas na eerste keer inloggen)</small>'}</label>` : ''}
       <button class="btn primary block">Opslaan</button>
       ${r.id ? '<button type="button" class="btn danger block" id="del">Verwijderen</button>' : ''}
     </form>`, (el, close) => {
@@ -515,8 +602,12 @@ function refForm(r) {
       const f = Object.fromEntries(new FormData(e.target));
       const row = { name: f.name.trim(), email: f.email.trim() || null, active: !!f.active };
       if (r.id) row.id = r.id;
+      const plannerChanged = r.id && r.user_id && !!f.is_planner !== !!r.is_planner;
       close();
-      act(() => store.saveReferee(row), 'Opgeslagen');
+      act(async () => {
+        await store.saveReferee(row);
+        if (plannerChanged) await store.setPlanner(r.id, !!f.is_planner);
+      }, 'Opgeslagen');
     };
     const del = $('#del', el);
     if (del) del.onclick = async () => { if (await ask(`${r.name} verwijderen?`, 'Verwijderen')) { close(); act(() => store.deleteReferee(r.id), 'Verwijderd'); } };
@@ -612,12 +703,17 @@ function beschikbaarheid(view) {
     card.querySelectorAll('[data-set]').forEach((b) => b.onclick = async () => {
       const yes = b.dataset.set === 'yes';
       if (!yes && state.data.matches.some((m) => m.date === d && m.referee_id === me)
-        && !await ask('Je bent die dag al aangesteld. Toch afmelden? Laat het ook de planner weten.', 'Toch afmelden')) return;
+        && !await ask('Je bent die dag al aangesteld. Toch afmelden? De planner krijgt hiervan een melding.', 'Toch afmelden')) return;
       const row = { ...base(), available: yes };
       saveAv(row);
     });
     card.querySelectorAll('[data-f]').forEach((inp) => inp.onchange = () => {
       const row = { ...base(), [inp.dataset.f]: inp.dataset.f === 'max_matches' ? (Number(inp.value) || null) : inp.value };
+      if (row.start_time && row.end_time && row.end_time <= row.start_time) {
+        toast('De eindtijd moet later zijn dan de begintijd.', true);
+        inp.value = base()[inp.dataset.f] || '';
+        return;
+      }
       saveAv(row);
     });
   });
@@ -703,6 +799,111 @@ function profiel(view) {
   $('#logout').onclick = () => act(() => store.signOut());
   const reset = $('#reset');
   if (reset) reset.onclick = async () => { if (await ask('Alle demo-gegevens terugzetten?', 'Terugzetten')) act(() => store.resetDemo(), 'Demo hersteld'); };
+}
+
+// ---------- Meldingen ----------
+const KIND_ICON = { assigned: '✓', changed: '↻', withdrawn: '✕', cancelled: '✕', unavailable: '!' };
+
+function timeAgo(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return 'zojuist';
+  if (min < 60) return `${min} min geleden`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} uur geleden`;
+  return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
+function meldingen(view) {
+  const list = state.data.notifications;
+  const unread = list.filter((n) => !n.read_at);
+  view.innerHTML = `
+    ${pushCard()}
+    <section class="card day-list">
+      <header class="day-head"><h2>Meldingen</h2>
+        ${unread.length ? `<button class="btn pill-btn" id="read-all">Alles gelezen</button>` : ''}</header>
+      ${list.map((n) => `
+        <div class="nrow ${n.read_at ? '' : 'unread'} k-${esc(n.kind)}" data-n="${n.id}" role="button" tabindex="0">
+          <span class="nicon" aria-hidden="true">${KIND_ICON[n.kind] || '•'}</span>
+          <div class="info"><b>${esc(n.title)}</b><span>${esc(n.body || '')}</span><small>${timeAgo(n.created_at)}</small></div>
+          ${n.read_at ? '' : '<i class="udot" title="Ongelezen"></i>'}
+        </div>`).join('') || '<p class="muted list-empty">Nog geen meldingen. Hier zie je aanstellingen, wijzigingen en afmeldingen.</p>'}
+    </section>`;
+  const ra = $('#read-all');
+  if (ra) ra.onclick = () => act(() => store.markRead(unread.map((n) => n.id)));
+  view.querySelectorAll('[data-n]').forEach((row) => row.onclick = () => {
+    const n = list.find((x) => x.id === row.dataset.n);
+    if (!n.read_at) act(() => store.markRead([n.id]));
+    if (n.to_planners && n.date) { state.day = n.date; location.hash = 'planning'; }
+    else if (n.kind !== 'cancelled' && n.kind !== 'withdrawn') location.hash = 'mijn';
+  });
+  bindPush();
+}
+
+// Push notifications need an installed app (iOS), a VAPID key and the cloud backend.
+function pushStatus() {
+  if (store.mode !== 'cloud' || !VAPID_PUBLIC_KEY) return 'unconfigured';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ? 'install' : 'unsupported';
+  }
+  return Notification.permission === 'granted' ? 'on' : Notification.permission === 'denied' ? 'denied' : 'off';
+}
+
+function pushCard() {
+  const st = pushStatus();
+  const text = {
+    unconfigured: store.mode === 'demo'
+      ? 'In de demo verschijnen meldingen alleen hier. In de echte app krijg je ze ook als pushmelding op je telefoon.'
+      : 'Pushmeldingen zijn nog niet ingesteld door de beheerder. Meldingen verschijnen wel hier.',
+    install: 'Zet de app eerst op je beginscherm (Deel → Zet op beginscherm) en open hem vanaf daar. Daarna kun je pushmeldingen aanzetten.',
+    unsupported: 'Deze browser ondersteunt geen pushmeldingen. Meldingen verschijnen wel hier.',
+    denied: 'Pushmeldingen zijn geblokkeerd. Zet ze aan in de instellingen van je telefoon voor deze app.',
+    on: 'Pushmeldingen staan aan op dit toestel.',
+    off: 'Krijg direct bericht op je telefoon bij een aanstelling of wijziging.',
+  }[st];
+  return `
+    <section class="card push ${st}">
+      <div class="push-head">${ICONS.bell}<b>Pushmeldingen</b>${st === 'on' ? '<span class="pill done">Aan</span>' : ''}</div>
+      <p class="muted">${text}</p>
+      ${st === 'off' ? '<button class="btn primary block" id="push-on">Meldingen aanzetten</button>' : ''}
+    </section>`;
+}
+
+function bindPush() {
+  const b = $('#push-on');
+  if (!b) return;
+  b.onclick = () => act(async () => {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { render(); throw new Error('Meldingen zijn niet toegestaan.'); }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
+    await store.savePushSubscription(sub.toJSON());
+    render();
+  }, 'Pushmeldingen staan aan.');
+}
+
+function base64UrlToBytes(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+// ---------- Meer (planner) ----------
+function meer(view) {
+  const me = store.user.referee_id;
+  const link = (href, icon, title, sub) => `
+    <a class="mrow menu" href="#${href}"><span class="micon">${icon}</span>
+      <div class="info"><b>${title}</b><div class="sub">${sub}</div></div><span class="chev" aria-hidden="true">›</span></a>`;
+  view.innerHTML = `
+    <section class="card day-list">
+      <header class="day-head"><h2>Ik fluit zelf ook</h2></header>
+      ${me ? link('mijn', ICONS.whistle, 'Mijn fluiten', 'Je eigen aanstellingen en seizoenscijfers')
+        + link('beschikbaarheid', ICONS.calendar, 'Mijn beschikbaarheid', 'Geef door wanneer je zelf kunt fluiten')
+        : '<p class="muted list-empty">Je staat nog niet als scheidsrechter in de lijst.</p>'}
+    </section>
+    <section class="card day-list">
+      <header class="day-head"><h2>App</h2></header>
+      ${link('profiel', ICONS.settings, 'Instellingen', 'Naam, tekstgrootte, app installeren, uitloggen')}
+    </section>`;
 }
 
 // ---------- UI helpers ----------

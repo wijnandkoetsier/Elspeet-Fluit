@@ -10,6 +10,7 @@ Webapp voor VV Elspeet om clubscheidsrechters te plannen. Werkt in de browser en
 - Eigen gepubliceerde aanstellingen zien en in de agenda zetten (.ics)
 - Voorkeuren per categorie (graag / liever niet)
 - Seizoenscijfers: aantal gefloten wedstrijden per categorie
+- **Meldingen** bij een aanstelling, wijziging, intrekking of vervallen wedstrijd, ook als pushmelding op de telefoon
 
 **Planner**
 - Wedstrijden toevoegen of importeren via CSV (bijv. export uit Sportlink)
@@ -17,11 +18,15 @@ Webapp voor VV Elspeet om clubscheidsrechters te plannen. Werkt in de browser en
 - Per wedstrijd een gerangschikte kandidatenlijst: beschikbaarheid, tijdconflicten, maximum per dag, voorkeuren en aantal wedstrijden dit seizoen
 - **Voorstel maken** vult de hele speeldag automatisch in als concept
 - **Publiceren** maakt de aanstellingen zichtbaar voor scheidsrechters
+- Per dag zien **wie er kan fluiten**, en beschikbaarheid invullen namens iemand (ook voor scheidsrechters zonder account)
 - Zien wie nog niets heeft ingevuld en een herinnering mailen
-- Scheidsrechters zonder account toevoegen
+- Waarschuwing in de planning en een melding als een aangestelde scheidsrechter zich afmeldt
+- Andere planners aanwijzen; een planner kan zelf ook fluiten (via **Meer**)
 - Weekprogramma en seizoenscijfers exporteren (CSV, opent in Excel)
 
 Alle wijzigingen komen via Supabase Realtime direct op alle telefoons binnen.
+
+**Privacy:** alleen e-mailadressen die de planner heeft toegevoegd kunnen inloggen. Scheidsrechters zien alleen hun eigen gegevens; namen, e-mailadressen en beschikbaarheid van anderen zijn alleen zichtbaar voor planners.
 
 ## Direct uitproberen (demo)
 
@@ -38,7 +43,13 @@ npx http-server -c-1 .
 1. Maak een project aan op [supabase.com](https://supabase.com).
 2. Ga naar **SQL Editor** → plak de inhoud van [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
 3. Ga naar **Authentication → URL Configuration** en zet de **Site URL** op het adres waar de app komt te staan (zie stap 2), bijvoorbeeld `https://<gebruiker>.github.io/READ.md/`.
-4. Kopieer uit **Project Settings → API** de *Project URL* en de *anon public key* naar [`js/config.js`](js/config.js). Pas daar ook `CLUB_NAME` en eventueel `CATEGORIES` aan.
+4. Ga naar **Authentication → Email Templates → Magic Link** en zet de code in de e-mail, zodat inloggen ook werkt vanuit de app op het beginscherm. Bijvoorbeeld:
+   ```html
+   <h2>Inloggen bij de scheidsrechtersapp</h2>
+   <p>Je code is: <strong style="font-size:24px">{{ .Token }}</strong></p>
+   <p>Of tik op deze link: <a href="{{ .ConfirmationURL }}">inloggen</a></p>
+   ```
+5. Kopieer uit **Project Settings → API** de *Project URL* en de *anon public key* naar [`js/config.js`](js/config.js). Pas daar ook `CLUB_NAME` en eventueel `CATEGORIES` aan.
 
 > De anon key mag openbaar in de code staan; de beveiliging zit in de Row Level Security-regels van het schema.
 
@@ -47,20 +58,40 @@ npx http-server -c-1 .
 2. Merge naar `main`. De workflow `.github/workflows/pages.yml` publiceert de app automatisch.
 
 ### 3. Eerste planner aanwijzen
-Iedereen die inlogt wordt eerst scheidsrechter. Log zelf één keer in en voer daarna in de SQL Editor uit:
+Alleen wie als scheidsrechter in de lijst staat, kan inloggen. Zet jezelf er dus eerst in via de SQL Editor (`active` op `false` als je zelf niet fluit):
+
+```sql
+insert into public.referees (name, email, active) values ('Jouw naam', 'jouw@email.nl', true);
+```
+
+Log daarna één keer in de app in met dat e-mailadres, en maak jezelf planner:
 
 ```sql
 update public.profiles set role = 'planner' where email = 'jouw@email.nl';
 ```
 
-Elke ingelogde gebruiker krijgt automatisch ook een scheidsrechtersprofiel. Een planner die niet fluit kan zichzelf bij *Scheidsen* op inactief zetten.
+Andere planners wijs je daarna in de app aan: **Scheidsen** → naam → **Planner** (kan zodra die persoon één keer heeft ingelogd).
 
 ### 4. Scheidsrechters uitnodigen
-Voeg scheidsrechters toe met hun e-mailadres en deel de link naar de app. Ze loggen in met een e-maillink (geen wachtwoord) en worden automatisch gekoppeld.
+Voeg scheidsrechters toe bij **Scheidsen** met hun e-mailadres en deel de link naar de app. Ze loggen in met een code van 6 cijfers die ze per e-mail krijgen (geen wachtwoord) en worden automatisch gekoppeld. Een onbekend e-mailadres wordt geweigerd.
 
 **Op de telefoon zetten:**
 - iPhone: open in Safari → **Deel** → **Zet op beginscherm**
 - Android: open in Chrome → menu ⋮ → **App installeren**
+
+### 5. Pushmeldingen (optioneel)
+Meldingen staan altijd in het tabblad **Meldingen**. Voor een melding op het vergrendelscherm:
+
+1. Maak een sleutelpaar: `npx web-push generate-vapid-keys`.
+2. Zet de **Public Key** in `VAPID_PUBLIC_KEY` in [`js/config.js`](js/config.js).
+3. Installeer de [Supabase CLI](https://supabase.com/docs/guides/cli) en voer uit in deze map:
+   ```bash
+   supabase link --project-ref <jouw-project-ref>
+   supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_CONTACT=jouw@email.nl
+   supabase functions deploy send-push
+   ```
+4. Ga in Supabase naar **Database → Webhooks → Create a new hook**: tabel `notifications`, event **Insert**, type **Supabase Edge Functions**, functie `send-push`.
+5. Iedereen kan daarna bij **Meldingen** op **Meldingen aanzetten** tikken. Op de iPhone werkt dit alleen als de app op het beginscherm staat (iOS 16.4 of nieuwer).
 
 ## CSV-import
 
@@ -81,13 +112,13 @@ datum;tijd;thuis;uit;veld;categorie
 | `js/logic.js` | Planningslogica: kandidaten rangschikken, voorstel, CSV |
 | `js/store-local.js` | Demo-opslag op het toestel |
 | `js/store-supabase.js` | Gedeelde opslag via Supabase |
-| `supabase/schema.sql` | Tabellen, triggers en beveiliging |
-| `sw.js`, `manifest.webmanifest` | Installeerbaar en offline te openen |
+| `supabase/schema.sql` | Tabellen, triggers (meldingen) en beveiliging |
+| `supabase/functions/send-push/` | Verstuurt pushmeldingen bij nieuwe meldingen |
+| `sw.js`, `manifest.webmanifest` | Installeerbaar, offline te openen, ontvangt pushmeldingen |
 
 Geen build-stap nodig: alles is gewone HTML/CSS/JavaScript.
 
 ## Mogelijke vervolgstappen
-- Pushmeldingen bij publicatie (Supabase Edge Function + Web Push)
 - Automatische import via de Sportlink Club.Dataservice
 - Meerdere clubs / meerdere planners met eigen teams
 - Clublogo en -kleuren instelbaar

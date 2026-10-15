@@ -178,3 +178,51 @@ export function toCSV(rows) {
   };
   return rows.map((r) => r.map(esc).join(';')).join('\r\n');
 }
+
+// ---------- Meldingen (zelfde regels als de database-triggers in supabase/schema.sql) ----------
+
+export function matchLabel(m) {
+  const [, mo, d] = m.date.split('-');
+  return `${d}-${mo} ${m.time} ${m.home}${m.away ? ` – ${m.away}` : ''}${m.field ? `, ${m.field}` : ''}`;
+}
+
+// old/neu are the match before and after a change; neu = null when the match is deleted.
+export function matchChangeNotifications(old, neu) {
+  const out = [];
+  const note = (referee_id, kind, title, body, m) => out.push({ referee_id, to_planners: false, kind, title, body, match_id: neu?.id || null, date: m.date });
+  if (!neu) {
+    if (old.published && old.referee_id) note(old.referee_id, 'cancelled', 'Wedstrijd vervallen', matchLabel(old), old);
+    return out;
+  }
+  if (old.published && old.referee_id && (neu.referee_id !== old.referee_id || !neu.published)) {
+    note(old.referee_id, 'withdrawn', 'Aanstelling ingetrokken', matchLabel(old), old);
+  } else if (old.published && neu.published && neu.referee_id === old.referee_id
+    && (neu.date !== old.date || neu.time !== old.time || (neu.field || '') !== (old.field || ''))) {
+    note(neu.referee_id, 'changed', 'Wedstrijd gewijzigd', `${matchLabel(neu)} (was ${matchLabel(old)})`, neu);
+  }
+  if (neu.published && neu.referee_id && (!old.published || old.referee_id !== neu.referee_id)) {
+    note(neu.referee_id, 'assigned', 'Je bent aangesteld', matchLabel(neu), neu);
+  }
+  return out;
+}
+
+// A referee marks a day unavailable while already assigned that day → note for planners.
+export function unavailableNotification(prev, row, matches, refereeName) {
+  if (row.available || (prev && !prev.available)) return null;
+  const n = matches.filter((m) => m.referee_id === row.referee_id && m.date === row.date).length;
+  if (!n) return null;
+  const [, mo, d] = row.date.split('-');
+  return {
+    referee_id: null, to_planners: true, kind: 'unavailable', date: row.date, match_id: null,
+    title: `${refereeName} heeft zich afgemeld`,
+    body: `Afgemeld voor ${d}-${mo}, maar aangesteld bij ${n} wedstrijd(en).`,
+  };
+}
+
+// Why the referee assigned to a match can no longer do it (null when fine).
+export function assignmentIssue(m, data) {
+  if (!m.referee_id || m.external_ref) return null;
+  const c = candidates(m, data).find((x) => x.referee.id === m.referee_id);
+  if (!c) return ['Niet meer actief'];
+  return c.status === 'no' ? c.reasons.filter((r) => !/graag|liever/i.test(r)) : null;
+}

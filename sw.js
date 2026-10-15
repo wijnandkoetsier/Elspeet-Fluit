@@ -1,5 +1,5 @@
 // Service worker: app shell offline beschikbaar. Data komt altijd vers van het netwerk.
-const CACHE = 'scheidsapp-v2';
+const CACHE = 'scheidsapp-v3';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/logic.js', 'js/config.js', 'js/store-local.js', 'js/store-supabase.js',
@@ -28,4 +28,28 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(e.request).then((r) => r || caches.match('index.html'))),
   );
+});
+
+// Pushmeldingen (verstuurd door supabase/functions/send-push).
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Scheidsrechters', {
+    body: d.body || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: d.tag,
+    data: { url: d.url || './#meldingen' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || './#meldingen', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) {
+      if ('focus' in c) { c.navigate?.(url); return c.focus(); }
+    }
+    return self.clients.openWindow(url);
+  }));
 });
