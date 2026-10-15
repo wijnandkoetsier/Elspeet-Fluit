@@ -73,10 +73,10 @@ function render() {
     return;
   }
   const routes = ROUTES[user.role] || ROUTES.referee;
-  let route = location.hash.replace('#/', '');
+  let route = location.hash.replace(/^#\/?/, '');
   if (!routes.some(([r]) => r === route)) route = routes[0][0];
   nav.innerHTML = routes.map(([r, label, icon]) =>
-    `<a href="#/${r}" class="${r === route ? 'active' : ''}"><span>${icon}</span>${label}</a>`).join('');
+    `<a href="#${r}" class="${r === route ? 'active' : ''}"><span>${icon}</span>${label}</a>`).join('');
   const views = { planning, wedstrijden, scheidsrechters, mijn, beschikbaarheid, profiel };
   view.innerHTML = '';
   views[route](view);
@@ -135,7 +135,7 @@ function planning(view) {
   const { matches, referees, availability } = state.data;
   const days = matchDays();
   if (!days.length) {
-    view.innerHTML = `<section class="card empty"><p>Nog geen wedstrijden.</p><a class="btn primary" href="#/wedstrijden">Wedstrijden toevoegen</a></section>`;
+    view.innerHTML = `<section class="card empty"><p>Nog geen wedstrijden.</p><a class="btn primary" href="#wedstrijden">Wedstrijden toevoegen</a></section>`;
     return;
   }
   const today = todayISO();
@@ -231,9 +231,9 @@ function assignSheet(matchId) {
     </div>
     ${m.referee_id ? '<button class="btn danger block" id="unassign">Toewijzing verwijderen</button>' : ''}
   `, (el, close) => {
-    el.querySelectorAll('[data-ref]').forEach((b) => b.onclick = () => {
+    el.querySelectorAll('[data-ref]').forEach((b) => b.onclick = async () => {
       const c = list.find((x) => x.referee.id === b.dataset.ref);
-      if (c.status === 'no' && !confirm(`${c.referee.name}: ${c.reasons.join(', ')}.\nToch toewijzen?`)) return;
+      if (c.status === 'no' && !await ask(`${c.referee.name}: ${c.reasons.join(', ')}. Toch toewijzen?`, 'Toch toewijzen')) return;
       close();
       act(() => store.updateMatches([m.id], { referee_id: c.referee.id, published: false }), `${c.referee.name} toegewezen (concept).`);
     });
@@ -299,7 +299,7 @@ function matchForm(m) {
       act(() => store.saveMatches([row]), 'Opgeslagen');
     };
     const del = $('#del', el);
-    if (del) del.onclick = () => { if (confirm('Wedstrijd verwijderen?')) { close(); act(() => store.deleteMatch(m.id), 'Verwijderd'); } };
+    if (del) del.onclick = async () => { if (await ask('Wedstrijd verwijderen?', 'Verwijderen')) { close(); act(() => store.deleteMatch(m.id), 'Verwijderd'); } };
   });
 }
 
@@ -375,7 +375,7 @@ function refForm(r) {
       act(() => store.saveReferee(row), 'Opgeslagen');
     };
     const del = $('#del', el);
-    if (del) del.onclick = () => { if (confirm(`${r.name} verwijderen?`)) { close(); act(() => store.deleteReferee(r.id), 'Verwijderd'); } };
+    if (del) del.onclick = async () => { if (await ask(`${r.name} verwijderen?`, 'Verwijderen')) { close(); act(() => store.deleteReferee(r.id), 'Verwijderd'); } };
   });
 }
 
@@ -395,7 +395,7 @@ function mijn(view) {
   view.innerHTML = `
     <h2 class="hello">Hoi ${esc(store.user.name.split(' ')[0])}</h2>
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
-    ${todo.length ? `<a class="card warn tap block" href="#/beschikbaarheid">📅 Vul je beschikbaarheid in voor ${todo.length} dag(en) →</a>` : ''}
+    ${todo.length ? `<a class="card warn tap block" href="#beschikbaarheid">📅 Vul je beschikbaarheid in voor ${todo.length} dag(en) →</a>` : ''}
     <h3 class="day">Komende wedstrijden</h3>
     ${upcoming.map((m) => `
       <article class="card match">
@@ -467,10 +467,10 @@ function beschikbaarheid(view) {
   view.querySelectorAll('.avail').forEach((card) => {
     const d = card.dataset.date;
     const base = () => av(d) || { referee_id: me, date: d, start_time: '', end_time: '', max_matches: null };
-    card.querySelectorAll('[data-set]').forEach((b) => b.onclick = () => {
+    card.querySelectorAll('[data-set]').forEach((b) => b.onclick = async () => {
       const yes = b.dataset.set === 'yes';
       if (!yes && state.data.matches.some((m) => m.date === d && m.referee_id === me)
-        && !confirm('Je bent die dag al aangesteld. Toch afmelden? Neem ook contact op met de planner.')) return;
+        && !await ask('Je bent die dag al aangesteld. Toch afmelden? Laat het ook de planner weten.', 'Toch afmelden')) return;
       const row = { ...base(), available: yes };
       saveAv(row);
     });
@@ -551,7 +551,7 @@ function profiel(view) {
   if (inst) inst.onclick = async () => { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; render(); };
   $('#logout').onclick = () => act(() => store.signOut());
   const reset = $('#reset');
-  if (reset) reset.onclick = () => { if (confirm('Alle demo-gegevens terugzetten?')) act(() => store.resetDemo(), 'Demo hersteld'); };
+  if (reset) reset.onclick = async () => { if (await ask('Alle demo-gegevens terugzetten?', 'Terugzetten')) act(() => store.resetDemo(), 'Demo hersteld'); };
 }
 
 // ---------- UI helpers ----------
@@ -564,6 +564,21 @@ function sheet(html, bind) {
   $('.close', wrap).onclick = close;
   document.body.appendChild(wrap);
   bind?.(wrap, close);
+}
+
+// In-page confirmation (native confirm() is blocked in some embedded views).
+function ask(message, okLabel = 'OK') {
+  return new Promise((resolve) => {
+    sheet(`<h3>${esc(message)}</h3>
+      <div class="actions"><button class="btn" id="ask-no">Annuleren</button>
+      <button class="btn primary" id="ask-yes">${esc(okLabel)}</button></div>`, (el, close) => {
+      const done = (v) => { close(); resolve(v); };
+      $('#ask-yes', el).onclick = () => done(true);
+      $('#ask-no', el).onclick = () => done(false);
+      $('.close', el).onclick = () => done(false);
+      el.onclick = (e) => { if (e.target === el) done(false); };
+    });
+  });
 }
 
 let toastTimer;
