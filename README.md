@@ -75,7 +75,7 @@ datum;tijd;thuis;uit;veld;categorie
 
 | Bestand | Inhoud |
 |---|---|
-| `index.html`, `css/app.css` | App-schil en opmaak in clubkleuren (mobiel eerst, licht/donker) |
+| `index.html`, `css/app.css` | App-schil en opmaak in clubkleuren (zwart-wit, groen en geel; tekstgrootte instelbaar) |
 | `icons/` | Clublogo en app-iconen |
 | `js/app.js` | Schermen en interactie |
 | `js/logic.js` | Planningslogica: kandidaten rangschikken, voorstel, CSV |

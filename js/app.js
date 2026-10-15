@@ -13,6 +13,24 @@ const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short' })
 let store;
 const state = { data: { matches: [], referees: [], availability: [] }, day: null, installPrompt: null };
 
+// ---------- Tekstgrootte (per toestel) ----------
+const TEXT_SIZES = [['klein', 'Klein', 14], ['normaal', 'Normaal', 16], ['groot', 'Groot', 18], ['extra', 'Extra groot', 20]];
+const SIZE_KEY = 'scheidsapp-tekstgrootte';
+
+function getTextSize() {
+  try { return localStorage.getItem(SIZE_KEY) || 'normaal'; } catch { return 'normaal'; }
+}
+
+function applyTextSize(key = getTextSize()) {
+  const size = (TEXT_SIZES.find(([k]) => k === key) || TEXT_SIZES[1])[2];
+  document.documentElement.style.fontSize = size + 'px';
+}
+
+function setTextSize(key) {
+  try { localStorage.setItem(SIZE_KEY, key); } catch {}
+  applyTextSize(key);
+}
+
 // ---------- Boot ----------
 async function boot() {
   if (SUPABASE_URL && SUPABASE_ANON_KEY) {
@@ -47,17 +65,27 @@ async function act(fn, ok) {
 }
 
 // ---------- Routing ----------
+// Line icons (24px grid, stroke = currentColor) so the tab bar stays black and white.
+const svg = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONS = {
+  planning: svg('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/>'),
+  ball: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7l4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M16 10l4.5-1.5M14.5 14.5l2.5 4M9.5 14.5l-2.5 4M8 10L3.5 8.5"/>'),
+  people: svg('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-3.5 3.2-5.5 6.5-5.5s6 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14.5c2.4 0 4 1.6 4.5 4"/>'),
+  settings: svg('<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'),
+  whistle: svg('<circle cx="9" cy="14" r="5"/><path d="M12.5 10.5L20 6v4l-6 2.5M9 14h.01"/>'),
+  calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/>'),
+};
 const ROUTES = {
   planner: [
-    ['planning', 'Planning', '📋'],
-    ['wedstrijden', 'Wedstrijden', '⚽'],
-    ['scheidsrechters', 'Scheidsen', '👥'],
-    ['profiel', 'Profiel', '⚙️'],
+    ['planning', 'Planning', ICONS.planning],
+    ['wedstrijden', 'Wedstrijden', ICONS.ball],
+    ['scheidsrechters', 'Scheidsen', ICONS.people],
+    ['profiel', 'Instellingen', ICONS.settings],
   ],
   referee: [
-    ['mijn', 'Mijn fluiten', '🏁'],
-    ['beschikbaarheid', 'Beschikbaar', '📅'],
-    ['profiel', 'Profiel', '⚙️'],
+    ['mijn', 'Mijn fluiten', ICONS.whistle],
+    ['beschikbaarheid', 'Beschikbaar', ICONS.calendar],
+    ['profiel', 'Instellingen', ICONS.settings],
   ],
 };
 
@@ -516,10 +544,18 @@ function profiel(view) {
         <button class="btn block">Opslaan</button>
       </form>
     </section>
+    <section class="card">
+      <h3>Tekstgrootte</h3>
+      <div class="seg sizes" role="radiogroup" aria-label="Tekstgrootte">
+        ${TEXT_SIZES.map(([k, label, px]) => `<button role="radio" aria-checked="${k === getTextSize()}" class="${k === getTextSize() ? 'on' : ''}" data-size="${k}" title="${label}">
+          <span style="font-size:${px}px">A</span><small>${label}</small></button>`).join('')}
+      </div>
+      <p class="size-preview">Zo ziet de tekst eruit. De keuze geldt alleen voor dit toestel.</p>
+    </section>
     ${ref ? `
     <section class="card">
       <h3>Wat fluit je graag?</h3>
-      <p class="muted">Tik om te wisselen: <span class="tag pub">graag</span> <span class="tag concept">liever niet</span>. De planner houdt hier rekening mee.</p>
+      <p class="muted">Tik om te wisselen: <span class="tag pub">graag</span> <span class="tag avoid">liever niet</span>. De planner houdt hier rekening mee.</p>
       <div class="chips wrap">${CATEGORIES.map((c) => {
         const s = (ref.pref_categories || []).includes(c) ? 'like' : (ref.avoid_categories || []).includes(c) ? 'avoid' : '';
         return `<button class="chip ${s}" data-cat="${c}">${c}</button>`;
@@ -538,6 +574,7 @@ function profiel(view) {
       <button class="btn block" id="logout">Uitloggen</button>
       ${store.mode === 'demo' ? '<button class="btn ghost block" id="reset">Demo-gegevens herstellen</button>' : ''}
     </section>`;
+  view.querySelectorAll('[data-size]').forEach((b) => b.onclick = () => { setTextSize(b.dataset.size); render(); });
   $('#pf').onsubmit = (e) => { e.preventDefault(); act(() => store.updateProfile({ name: new FormData(e.target).get('name').trim() }), 'Opgeslagen'); };
   view.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => {
     const c = b.dataset.cat;
@@ -600,4 +637,5 @@ function download(name, content, type) {
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
+applyTextSize();
 boot();
