@@ -74,6 +74,11 @@ const ICONS = {
   settings: svg('<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'),
   whistle: svg('<circle cx="9" cy="14" r="5"/><path d="M12.5 10.5L20 6v4l-6 2.5M9 14h.01"/>'),
   calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/>'),
+  date: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/>'),
+  download: svg('<path d="M12 4v11M7 10.5l5 5 5-5M4.5 20h15"/>'),
+  prev: svg('<path d="M15 5l-7 7 7 7"/>'),
+  next: svg('<path d="M9 5l7 7-7 7"/>'),
+  arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
 };
 const ROUTES = {
   planner: [
@@ -181,24 +186,48 @@ function dayList(title, pill, rows) {
     </section>`;
 }
 
+// Days to plan: every match day plus the coming four Saturdays (so empty Saturdays show too).
+function planDays() {
+  const today = todayISO();
+  const set = new Set(state.data.matches.map((m) => m.date));
+  availabilityDates([], new Date(today + 'T12:00:00')).forEach((d) => set.add(d));
+  return [...set].sort();
+}
+
+const DAY_FILTERS = [['alle', 'Alle'], ['open', 'Open'], ['concept', 'Concept']];
+
 function planning(view) {
   const { matches, referees, availability } = state.data;
-  const days = matchDays();
-  if (!days.length) {
-    view.innerHTML = `<section class="card empty"><p>Nog geen wedstrijden.</p><a class="btn primary" href="#wedstrijden">Wedstrijden toevoegen</a></section>`;
-    return;
-  }
+  const days = planDays();
   const today = todayISO();
   if (!state.day || !days.includes(state.day)) state.day = days.find((d) => d >= today) || days[days.length - 1];
   const day = state.day;
+  const idx = days.indexOf(day);
+  const filter = state.filter || 'alle';
   const dayMatches = matches.filter((m) => m.date === day).sort((a, b) => a.time.localeCompare(b.time));
   const own = dayMatches.filter((m) => !m.external_ref);
   const open = own.filter((m) => !m.referee_id);
   const unpublished = own.filter((m) => m.referee_id && !m.published);
-  const missing = referees.filter((r) => r.active !== false && !availability.some((a) => a.referee_id === r.id && a.date === day));
   const refName = (id) => referees.find((r) => r.id === id)?.name || '?';
+  const firstSat = days.find((d) => d >= today && new Date(d + 'T12:00:00').getDay() === 6);
 
-  const rows = dayMatches.map((m) => {
+  const tile = (d) => {
+    const ms = matches.filter((m) => m.date === d);
+    const hasOpen = ms.some((m) => !m.external_ref && !m.referee_id);
+    const label = d === today ? 'Vandaag' : d === firstSat ? 'Deze zaterdag' : fmtDate(d, { weekday: 'short' });
+    return `<button class="day-tile ${d === day ? 'on' : ''} ${d < today ? 'past' : ''}" data-day="${d}">
+      <span class="dl">${label}</span>
+      <b>${fmtDate(d, { day: 'numeric', month: 'short' }).replace('.', '')}</b>
+      <span class="dn">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>
+      ${hasOpen ? '<i class="open-dot" title="Open wedstrijden"></i>' : ''}
+    </button>`;
+  };
+
+  const shown = dayMatches.filter((m) => filter === 'alle'
+    || (filter === 'open' && !m.external_ref && !m.referee_id)
+    || (filter === 'concept' && m.referee_id && !m.published));
+
+  const rows = shown.map((m) => {
     const parts = m.field ? [esc(m.field)] : [];
     let action = '';
     if (m.external_ref) {
@@ -212,37 +241,109 @@ function planning(view) {
       action = `<button class="btn pill-btn assign" data-assign="${m.id}">Toewijzen</button>`;
     }
     return matchRow(m, { sub: parts.join('<span class="sep">·</span>'), action });
-  }).join('');
+  }).join('') || `<p class="muted list-empty">${dayMatches.length ? 'Geen wedstrijden in deze selectie.' : 'Geen wedstrijden op deze dag.'}</p>`;
 
-  const pill = open.length ? `<span class="pill open">${open.length} open</span>` : '<span class="pill done">Alles ingevuld</span>';
+  const pill = !own.length ? '' : open.length ? `<span class="pill open">${open.length} open</span>` : '<span class="pill done">Alles ingevuld</span>';
 
   view.innerHTML = `
-    <div class="chips scroll">${days.map((d) => `<button class="chip ${d === day ? 'on' : ''} ${d < today ? 'past' : ''}" data-day="${d}">${fmtDate(d)}</button>`).join('')}</div>
-    <div class="actions top">
-      <button class="btn small" id="propose">✨ Voorstel maken</button>
-      <button class="btn small ghost" id="export">⬇︎ Export</button>
-    </div>
-    ${missing.length ? `<details class="card missing"><summary>${missing.length} scheidsrechter(s) nog niets ingevuld</summary>
-      <p>${missing.map((r) => esc(r.name)).join(', ')}</p>
-      ${missing.some((r) => r.email) ? `<a class="btn small" href="${remindLink(missing, day)}">✉️ Herinnering mailen</a>` : ''}
-    </details>` : ''}
+    <section class="card date-nav">
+      <div class="date-head">
+        <button class="icon-btn" id="day-prev" aria-label="Vorige dag" ${idx <= 0 ? 'disabled' : ''}>${ICONS.prev}</button>
+        <h2>${ICONS.date}<span>${fmtDate(day, { weekday: 'short', day: 'numeric', month: 'long' })}</span></h2>
+        <button class="icon-btn" id="day-next" aria-label="Volgende dag" ${idx >= days.length - 1 ? 'disabled' : ''}>${ICONS.next}</button>
+        <button class="icon-btn" id="export" aria-label="Programma exporteren" title="Programma exporteren">${ICONS.download}</button>
+      </div>
+      <div class="day-tiles" id="day-tiles">${days.map(tile).join('')}</div>
+      <div class="filter-seg" role="tablist">${DAY_FILTERS.map(([k, label]) =>
+        `<button role="tab" aria-selected="${k === filter}" class="${k === filter ? 'on' : ''}" data-filter="${k}">${label}</button>`).join('')}</div>
+    </section>
+    ${open.length ? '<div class="actions top"><button class="btn small" id="propose">✨ Voorstel maken</button></div>' : ''}
     ${dayList(fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }), pill, rows)}
+    ${whoCanReferee(day)}
     ${unpublished.length ? `<div class="publish-space"></div>
       <div class="publish-bar"><button class="btn primary" id="publish">Publiceren (${unpublished.length})</button></div>` : ''}`;
 
-  view.querySelectorAll('[data-day]').forEach((b) => b.onclick = () => { state.day = b.dataset.day; render(); });
+  const go = (d) => { state.day = d; render(); };
+  view.querySelectorAll('[data-day]').forEach((b) => b.onclick = () => go(b.dataset.day));
+  $('#day-prev').onclick = () => idx > 0 && go(days[idx - 1]);
+  $('#day-next').onclick = () => idx < days.length - 1 && go(days[idx + 1]);
+  view.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
   view.querySelectorAll('[data-assign]').forEach((b) => b.onclick = () => assignSheet(b.dataset.assign));
-  $('#propose').onclick = () => {
-    const prop = proposeDay(day, state.data);
-    if (!prop.length) return toast('Geen voorstel mogelijk: niemand (meer) beschikbaar voor open wedstrijden.');
+  $('#all-avail').onclick = () => availabilitySheet(day);
+  const tiles = $('#day-tiles'), on = $('.day-tile.on', tiles);
+  if (on) tiles.scrollLeft = on.offsetLeft - tiles.offsetLeft - 4;
+  const prop = $('#propose');
+  if (prop) prop.onclick = () => {
+    const list = proposeDay(day, state.data);
+    if (!list.length) return toast('Geen voorstel mogelijk: niemand (meer) beschikbaar voor open wedstrijden.');
     act(async () => {
-      for (const p of prop) await store.updateMatches([p.matchId], { referee_id: p.refereeId, published: false });
-    }, `${prop.length} wedstrijd(en) ingevuld als concept. Controleer en publiceer.`);
+      for (const p of list) await store.updateMatches([p.matchId], { referee_id: p.refereeId, published: false });
+    }, `${list.length} wedstrijd(en) ingevuld als concept. Controleer en publiceer.`);
   };
   const pub = $('#publish');
   if (pub) pub.onclick = () => act(() => store.updateMatches(unpublished.map((m) => m.id), { published: true }),
     'Planning gepubliceerd. Scheidsrechters zien hun aanstelling nu in de app.');
   $('#export').onclick = () => exportDay(day, dayMatches, refName);
+}
+
+// Availability of every active referee on a day, grouped.
+function dayAvailability(day) {
+  const { referees, availability, matches } = state.data;
+  const groups = { yes: [], no: [], none: [] };
+  for (const r of referees.filter((x) => x.active !== false)) {
+    const a = availability.find((x) => x.referee_id === r.id && x.date === day);
+    const assigned = matches.filter((m) => m.date === day && m.referee_id === r.id).length;
+    const entry = { r, a, assigned };
+    (a ? (a.available ? groups.yes : groups.no) : groups.none).push(entry);
+  }
+  groups.yes.sort((x, y) => (x.a.start_time || '').localeCompare(y.a.start_time || '') || x.r.name.localeCompare(y.r.name));
+  return groups;
+}
+
+function availRow({ r, a, assigned }) {
+  const hours = a?.available
+    ? (a.start_time || a.end_time ? `${a.start_time || 'begin'} – ${a.end_time || 'eind'}` : 'Hele dag')
+    : a ? 'Niet beschikbaar' : 'Nog niets ingevuld';
+  const extra = [a?.max_matches ? `max ${a.max_matches}` : '', assigned ? `fluit ${assigned}×` : ''].filter(Boolean).join(' · ');
+  const full = a?.available && a.max_matches && assigned >= a.max_matches;
+  const st = !a ? 'none' : !a.available ? 'no' : full ? 'full' : assigned ? 'busy' : 'free';
+  return `
+    <div class="arow">
+      <div class="avatar">${esc(initials(r.name))}</div>
+      <div class="info"><b>${esc(r.name)}</b><small>${esc(hours)}${extra ? ` · ${esc(extra)}` : ''}</small></div>
+      <i class="adot ${st}" title="${{ free: 'Vrij', busy: 'Al aangesteld, nog ruimte', full: 'Maximum bereikt', no: 'Niet beschikbaar', none: 'Onbekend' }[st]}"></i>
+    </div>`;
+}
+
+function whoCanReferee(day) {
+  const g = dayAvailability(day);
+  return `
+    <section class="card who">
+      <header class="who-head">
+        <div><h2>Wie kan er fluiten?</h2><p class="muted">${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
+        <span class="who-icon">${ICONS.people}</span>
+      </header>
+      ${g.yes.map(availRow).join('') || '<p class="muted">Nog niemand heeft zich beschikbaar gemeld.</p>'}
+      <button class="link-row" id="all-avail">
+        <span>Alle beschikbaarheid${g.none.length ? ` <small class="pill open">${g.none.length} niets ingevuld</small>` : ''}</span>${ICONS.arrow}
+      </button>
+    </section>`;
+}
+
+function availabilitySheet(day) {
+  const g = dayAvailability(day);
+  const block = (title, list) => list.length ? `<h4 class="sheet-sub">${title} (${list.length})</h4>${list.map(availRow).join('')}` : '';
+  const withMail = g.none.filter((x) => x.r.email).map((x) => x.r);
+  sheet(`
+    <h3>Beschikbaarheid ${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+    <div class="who">
+      ${block('Beschikbaar', g.yes)}
+      ${block('Niet beschikbaar', g.no)}
+      ${block('Nog niets ingevuld', g.none)}
+    </div>
+    ${withMail.length ? `<a class="btn block" href="${remindLink(withMail, day)}">✉️ Herinnering mailen (${withMail.length})</a>
+      <p class="muted">Werkt dit niet? Mail dan zelf naar: <span class="select">${withMail.map((r) => esc(r.email)).join(', ')}</span></p>` : ''}
+  `);
 }
 
 function remindLink(refs, day) {
