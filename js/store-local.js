@@ -17,13 +17,13 @@ function seed() {
   ];
   const mk = (date, time, home, away, field, category) => ({ id: uid(), date, time, duration: 60, home, away, field, category, referee_id: null, published: false, external_ref: false });
   const matches = [
-    mk(d1, '08:30', 'MVC JO8-1', 'SVO JO8-2', 'Veld 2A', 'JO8'),
-    mk(d1, '09:00', 'MVC JO11-1', 'Blauw Wit JO11-3', 'Veld 1', 'JO11'),
-    mk(d1, '10:15', 'MVC JO12-2', 'DOS JO12-1', 'Veld 2', 'JO12'),
-    mk(d1, '11:30', 'MVC JO15-1', 'Rood Wit JO15-1', 'Veld 1', 'JO15'),
-    mk(d1, '13:00', 'MVC JO17-1', 'Fortuna JO17-2', 'Veld 1', 'JO17'),
-    mk(d2, '09:00', 'MVC JO11-2', 'Zwart Geel JO11-1', 'Veld 1', 'JO11'),
-    mk(d2, '14:30', 'MVC 1', 'VV Oost 1', 'Hoofdveld', 'Senioren'),
+    mk(d1, '08:30', 'Elspeet JO8-1', 'SVO JO8-2', 'Veld 2A', 'JO8'),
+    mk(d1, '09:00', 'Elspeet JO11-1', 'Blauw Wit JO11-3', 'Veld 1', 'JO11'),
+    mk(d1, '10:15', 'Elspeet JO12-2', 'DOS JO12-1', 'Veld 2', 'JO12'),
+    mk(d1, '11:30', 'Elspeet JO15-1', 'Rood Wit JO15-1', 'Veld 1', 'JO15'),
+    mk(d1, '13:00', 'Elspeet JO17-1', 'Fortuna JO17-2', 'Veld 1', 'JO17'),
+    mk(d2, '09:00', 'Elspeet JO11-2', 'Zwart Geel JO11-1', 'Veld 1', 'JO11'),
+    mk(d2, '14:30', 'Elspeet 1', 'VV Oost 1', 'Hoofdveld', 'Senioren'),
   ];
   matches[6].duration = 105;
   matches[6].external_ref = true; // KNVB stelt aan

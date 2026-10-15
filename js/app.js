@@ -279,7 +279,7 @@ function matchForm(m) {
     <form id="mf" class="form">
       <div class="row"><label>Datum<input type="date" name="date" required value="${esc(m.date)}"></label>
         <label>Aanvang<input type="time" name="time" required value="${esc(m.time)}"></label></div>
-      <label>Thuis<input name="home" required value="${esc(m.home)}" placeholder="MVC JO11-1"></label>
+      <label>Thuis<input name="home" required value="${esc(m.home)}" placeholder="Elspeet JO11-1"></label>
       <label>Uit<input name="away" value="${esc(m.away)}" placeholder="Tegenstander"></label>
       <div class="row"><label>Veld<input name="field" value="${esc(m.field)}"></label>
         <label>Duur (min)<input type="number" name="duration" min="20" max="180" value="${esc(m.duration || 90)}"></label></div>
@@ -308,7 +308,7 @@ function importSheet() {
     <h3>Wedstrijden importeren</h3>
     <p class="muted">CSV uit Sportlink of Excel (opslaan als CSV). Kolommen: <b>datum, tijd, thuis</b>, optioneel <b>uit, veld, categorie</b>.</p>
     <input type="file" id="csvfile" accept=".csv,text/csv">
-    <textarea id="csvtext" rows="6" placeholder="datum;tijd;thuis;uit;veld;categorie&#10;12-10-2026;09:00;MVC JO11-1;DOS JO11-2;Veld 1;JO11"></textarea>
+    <textarea id="csvtext" rows="6" placeholder="datum;tijd;thuis;uit;veld;categorie&#10;12-10-2026;09:00;Elspeet JO11-1;DOS JO11-2;Veld 1;JO11"></textarea>
     <p id="csvinfo" class="muted"></p>
     <button class="btn primary block" id="doimport" disabled>Importeren</button>`, (el, close) => {
     let parsed = [];

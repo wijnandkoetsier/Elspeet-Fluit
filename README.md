@@ -1,6 +1,6 @@
-# Scheidsrechtersapp
+# Scheidsrechtersapp VV Elspeet
 
-Webapp voor de voetbalvereniging om clubscheidsrechters te plannen. Werkt in de browser en is te installeren op de telefoon (PWA), zonder App Store.
+Webapp voor VV Elspeet om clubscheidsrechters te plannen. Werkt in de browser en is te installeren op de telefoon (PWA), zonder App Store.
 
 ## Wat kan het?
 
@@ -68,14 +68,15 @@ Eerste regel bevat de kolomnamen; scheidingsteken `;` of `,`. Datum als `dd-mm-j
 
 ```
 datum;tijd;thuis;uit;veld;categorie
-24-10-2026;09:00;MVC JO11-1;DOS JO11-2;Veld 1;JO11
+24-10-2026;09:00;Elspeet JO11-1;DOS JO11-2;Veld 1;JO11
 ```
 
 ## Opbouw
 
 | Bestand | Inhoud |
 |---|---|
-| `index.html`, `css/app.css` | App-schil en opmaak (mobiel eerst, licht/donker) |
+| `index.html`, `css/app.css` | App-schil en opmaak in clubkleuren (mobiel eerst, licht/donker) |
+| `icons/` | Clublogo en app-iconen |
 | `js/app.js` | Schermen en interactie |
 | `js/logic.js` | Planningslogica: kandidaten rangschikken, voorstel, CSV |
 | `js/store-local.js` | Demo-opslag op het toestel |
