@@ -119,7 +119,7 @@ export function categoryFromTeam(team) {
   if (m) return 'O' + Number(m[1]);
   if (/30\+/.test(t)) return 'VR30+';
   if (/\bVR\s?\d|vrouwen|dames/i.test(t)) return 'VR1';
-  if (/45\+/.test(t)) return '45+';
+  if (/4[05]\+/.test(t)) return '40+';
   if (/35\+|vet|VE\d/i.test(t)) return '35+';
   if (/7\s?[x×]\s?7/i.test(t)) return '7x7';
   // "Elspeet 2" or "Elspeet 2 (zon)" → 2e
@@ -129,7 +129,7 @@ export function categoryFromTeam(team) {
 
 // Categories before the split of seniors and women into teams. Matches get a category from their
 // home team again; preferences become the whole group. Same mapping as the migration in schema.sql.
-const LEGACY_PREFS = { Senioren: ['1e', '2e', '3e', '4e', '5e', '7x7'], Veteranen: ['35+', '45+'], Vrouwen: ['VR1', 'VR30+'] };
+const LEGACY_PREFS = { Senioren: ['1e', '2e', '3e', '4e', '5e', '7x7'], Veteranen: ['35+', '40+'], Vrouwen: ['VR1', 'VR30+'], '45+': ['40+'] };
 export function upgradeCategory(m) {
   return LEGACY_PREFS[m.category] ? categoryFromTeam(m.home) : m.category;
 }
@@ -146,7 +146,7 @@ export function defaultDuration(category) {
     return age <= 9 ? 45 : age <= 11 ? 55 : age <= 13 ? 65 : age <= 15 ? 75 : age <= 17 ? 85 : 105;
   }
   if (category === '7x7') return 60;
-  return ['35+', '45+', 'VR30+'].includes(category) ? 80 : 105;
+  return ['35+', '40+', 'VR30+'].includes(category) ? 80 : 105;
 }
 
 // "Veld 1-hoofdveld" → "Veld 1". Same rule as clean_field() in hosting/sportlink-sync.php.

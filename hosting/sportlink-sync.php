@@ -188,7 +188,7 @@ function category_from_team(string $team): string
     if (preg_match('/\b[JM]?O\s?(\d{1,2})(?=-|\b|[A-Z])/i', $team, $m)) return 'O' . (int) $m[1];
     if (preg_match('/30\+/', $team)) return 'VR30+';
     if (preg_match('/\bVR\s?\d|vrouwen|dames/i', $team)) return 'VR1';
-    if (preg_match('/45\+/', $team)) return '45+';
+    if (preg_match('/4[05]\+/', $team)) return '40+';
     if (preg_match('/35\+|vet|VE\d/i', $team)) return '35+';
     if (preg_match('/7\s?[x×]\s?7/iu', $team)) return '7x7';
     // "Elspeet 2" of "Elspeet 2 (zon)" → 2e
@@ -211,7 +211,7 @@ function default_duration(string $category): int
         };
     }
     if ($category === '7x7') return 60;
-    return in_array($category, ['35+', '45+', 'VR30+'], true) ? 80 : 105;
+    return in_array($category, ['35+', '40+', 'VR30+'], true) ? 80 : 105;
 }
 
 /** "veld 1-hoofdveld" → "Veld 1". Zelfde regel als fieldName() in js/logic.js. */
@@ -387,7 +387,7 @@ function sync(array $c, array $feed): array
                 if ((string) ($old[$k] ?? '') !== (string) $f[$k]) $patch[$k] = $f[$k];
             }
             // Leeg, of nog een oude categorie van vóór de indeling in teams.
-            if (empty($old['category']) || in_array($old['category'], ['Senioren', 'Veteranen', 'Vrouwen'], true)) $patch['category'] = $f['category'];
+            if (empty($old['category']) || in_array($old['category'], ['Senioren', 'Veteranen', 'Vrouwen', '45+'], true)) $patch['category'] = $f['category'];
             if ($knvb && empty($old['external_ref'])) $patch['external_ref'] = true;
             if ($refId && ($old['referee_id'] ?? null) !== $refId) {
                 $patch += ['referee_id' => $refId, 'published' => true, 'referee_from_sportlink' => true];

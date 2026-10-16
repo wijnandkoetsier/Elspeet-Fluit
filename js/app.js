@@ -986,12 +986,12 @@ function prefsCard(ref) {
     <section class="card prefs">
       <h3>Wat fluit je graag?</h3>
       <p class="muted">Kies eerst een groep. Wil je alleen bepaalde teams, tik die dan ook aan. Laat je de teams open, dan geldt de hele groep. Je ziet bij <b>Open wedstrijden</b> dan alleen deze wedstrijden.</p>
-      <div class="chips wrap">${groups.map(([g]) =>
+      <div class="chips groups">${groups.map(([g]) =>
         `<button class="chip group ${pst[g].on ? 'like' : ''}" data-group="${g}" aria-pressed="${pst[g].on}">${g}</button>`).join('')}</div>
       ${groups.filter(([, cs]) => cs.length > 1).map(([g, cs]) => `
         <div class="pref-teams ${pst[g].on ? '' : 'off'}">
           <small>${g}${pst[g].on && !pst[g].teams.length ? ' · alle teams' : ''}</small>
-          <div class="chips wrap">${cs.map((c) => `<button class="chip ${pst[g].teams.includes(c) ? 'on' : ''}" data-cat="${c}" aria-pressed="${pst[g].teams.includes(c)}">${c}</button>`).join('')}</div>
+          <div class="chips wrap">${cs.map((c) => `${c === '7x7' ? '<span class="chip-break"></span>' : ''}<button class="chip ${pst[g].teams.includes(c) ? 'on' : ''}" data-cat="${c}" aria-pressed="${pst[g].teams.includes(c)}">${c}</button>`).join('')}</div>
         </div>`).join('')}
     </section>`;
 }
