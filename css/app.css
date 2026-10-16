@@ -426,3 +426,13 @@ a.mrow.menu { text-decoration: none; color: inherit; grid-template-columns: auto
 /* Sportlink: soort wedstrijd en scheidsrechter volgens Sportlink */
 .label.type { color: var(--text); background: var(--accent-soft); box-shadow: none; }
 .sl-ref { flex-basis: 100%; font-size: .8rem; color: var(--muted); }
+
+/* Meer: knoppen in dezelfde vorm als de menuregels */
+button.mrow.menu {
+  appearance: none; font: inherit; color: inherit; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: none; border-radius: 0; grid-template-columns: auto minmax(0, 1fr) auto;
+}
+button.mrow.menu + .mrow, .mrow + button.mrow.menu { border-top: 1px solid var(--line); }
+button.mrow.menu:active { background: var(--soft); }
+button.mrow.menu:disabled { cursor: default; opacity: 1; }
+button.mrow.menu.failed .sub { color: var(--red); }

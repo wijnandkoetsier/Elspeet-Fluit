@@ -143,7 +143,7 @@ datum;tijd;thuis;uit;veld;categorie
 |---|---|
 | `index.html`, `css/app.css` | App-schil en opmaak in clubkleuren (zwart-wit, groen en geel; tekstgrootte instelbaar) |
 | `icons/` | Clublogo en app-iconen |
-| `js/app.js` | Schermen en interactie |
+| `js/app.js` | Schermen en interactie (Sportlink ophalen en CSV-import staan onder **Meer**) |
 | `js/logic.js` | Planningslogica: kandidaten rangschikken, voorstel, CSV |
 | `js/store-local.js` | Demo-opslag op het toestel |
 | `js/store-supabase.js` | Gedeelde opslag via Supabase |
