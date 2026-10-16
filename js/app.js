@@ -378,7 +378,7 @@ function planning(view) {
 function dayAvailability(day) {
   const { referees, availability, matches } = state.data;
   const groups = { yes: [], no: [], none: [] };
-  for (const r of referees.filter((x) => x.active !== false)) {
+  for (const r of referees.filter((x) => x.active !== false && x.is_referee !== false)) {
     const a = availability.find((x) => x.referee_id === r.id && x.date === day);
     const assigned = matches.filter((m) => m.date === day && m.referee_id === r.id).length;
     const entry = { r, a, assigned };
@@ -636,27 +636,36 @@ function importSheet() {
 function scheidsrechters(view) {
   const counts = seasonCounts(state.data.matches, todayISO());
   const season = seasonOf(todayISO()).label;
-  view.innerHTML = `
-    <div class="actions top"><button class="btn primary" id="add-ref">＋ Scheidsrechter</button>
-      <button class="btn ghost" id="export-season">⬇︎ Seizoenscijfers</button></div>
-    <div class="list">
-      ${state.data.referees.map((r) => `
-        <article class="card ref tap ${r.active === false ? 'dim' : ''}" data-edit="${r.id}">
+  const refs = state.data.referees.filter((r) => r.is_referee !== false);
+  const plannersOnly = state.data.referees.filter((r) => r.is_referee === false);
+  const card = (r, count) => `
+        <article class="card ref tap ${r.active === false && r.is_referee !== false ? 'dim' : ''}" data-edit="${r.id}">
           <div class="avatar">${esc(initials(r.name))}</div>
           <div class="body"><b>${esc(r.name)}</b>
-            <div class="meta">${r.is_planner ? '<span class="label">Planner</span> ' : ''}${r.sportlink_name ? '<span class="label type">Uit Sportlink</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length ? ' · graag ' + esc(prefLabel(r.pref_categories, CATEGORIES)) : ''}</div></div>
-          <div class="count">${counts[r.id] || 0}<small>${season}</small></div>
-        </article>`).join('') || '<section class="card empty"><p>Nog geen scheidsrechters.</p></section>'}
+            <div class="meta">${isPlannerRef(r) ? '<span class="label">Planner</span> ' : ''}${r.sportlink_name ? '<span class="label type">Uit Sportlink</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length && r.is_referee !== false ? ' · graag ' + esc(prefLabel(r.pref_categories, CATEGORIES)) : ''}</div></div>
+          ${count ? `<div class="count">${counts[r.id] || 0}<small>${season}</small></div>` : ''}
+        </article>`;
+  view.innerHTML = `
+    <div class="actions top"><button class="btn primary" id="add-ref">＋ Toevoegen</button>
+      <button class="btn ghost" id="export-season">⬇︎ Seizoenscijfers</button></div>
+    <div class="list">
+      ${refs.map((r) => card(r, true)).join('') || '<section class="card empty"><p>Nog geen scheidsrechters.</p></section>'}
     </div>
+    ${plannersOnly.length ? `<h3 class="day">Alleen planner</h3><div class="list">${plannersOnly.map((r) => card(r, false)).join('')}</div>` : ''}
     <p class="muted pad">Alleen wie hier met een e-mailadres staat, kan inloggen. Deel daarna de link naar de app.</p>`;
-  $('#add-ref').onclick = () => refForm({ name: '', email: '', active: true, pref_categories: [], avoid_categories: [] });
+  $('#add-ref').onclick = () => refForm({ name: '', email: '', active: true, is_referee: true, pref_categories: [], avoid_categories: [] });
   $('#export-season').onclick = () => {
     const rows = [['Scheidsrechter', `Wedstrijden ${season}`]];
-    state.data.referees.forEach((r) => rows.push([r.name, counts[r.id] || 0]));
+    refs.forEach((r) => rows.push([r.name, counts[r.id] || 0]));
     download(`seizoen-${season.replace('/', '-')}.csv`, '﻿' + toCSV(rows), 'text/csv');
   };
   view.querySelectorAll('[data-edit]').forEach((el) => el.onclick = () => refForm(state.data.referees.find((r) => r.id === el.dataset.edit)));
 }
+
+// Planner now, or will be after the first login.
+const isPlannerRef = (r) => !!(r.is_planner || (!r.user_id && r.invite_planner));
+const ROLES = [['referee', 'Scheidsrechter'], ['planner', 'Planner'], ['both', 'Allebei']];
+const roleOf = (r) => (r.is_referee === false ? 'planner' : isPlannerRef(r) ? 'both' : 'referee');
 
 const initials = (n) => n.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
@@ -689,32 +698,48 @@ function refAssignments(r) {
 
 function refForm(r) {
   sheet(`
-    <h3>${r.id ? esc(r.name) : 'Nieuwe scheidsrechter'}</h3>
-    ${r.id ? refAssignments(r) : ''}
+    <h3>${r.id ? esc(r.name) : 'Nieuwe persoon'}</h3>
+    ${r.id && r.is_referee !== false ? refAssignments(r) : ''}
     ${r.id ? '<h4 class="sheet-sub">Gegevens</h4>' : ''}
     <form id="rf" class="form">
       <label>Naam<input name="name" required value="${esc(r.name)}"></label>
       <label>E-mail <small class="muted">(nodig om in te loggen)</small><input type="email" name="email" value="${esc(r.email)}"></label>
-      <label class="check"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Actief (kan worden ingepland)</label>
-      ${r.id ? `<label class="check"><input type="checkbox" name="is_planner" ${r.is_planner ? 'checked' : ''} ${r.user_id ? '' : 'disabled'}> Planner
-        ${r.user_id ? '' : '<small class="muted">(kan pas na eerste keer inloggen)</small>'}</label>` : ''}
+      <fieldset class="role-pick"><legend>Rol</legend>
+        <div class="seg">${ROLES.map(([k, label]) => `<label><input type="radio" name="role" value="${k}" ${roleOf(r) === k ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
+        <small class="muted" id="rf-role-help"></small>
+      </fieldset>
+      <label class="check" id="rf-active"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Actief (kan worden ingepland)</label>
       <p class="field-error" id="rf-err" hidden></p>
       <button class="btn primary block">Opslaan</button>
       ${r.id ? '<button type="button" class="btn danger block" id="del">Verwijderen</button>' : ''}
     </form>`, (el, close) => {
+    const HELP = {
+      referee: 'Kan worden ingepland om te fluiten.',
+      planner: 'Plant alleen: staat niet in de lijst met scheidsrechters en wordt nooit ingepland.',
+      both: 'Plant en kan zelf ook worden ingepland.',
+    };
+    const syncRole = () => {
+      const role = $('[name=role]:checked', el).value;
+      $('#rf-active', el).hidden = role === 'planner';
+      $('#rf-role-help', el).textContent = HELP[role] + (role !== 'referee' && !r.user_id ? ' Wordt planner bij de eerste keer inloggen.' : '');
+    };
+    el.querySelectorAll('[name=role]').forEach((x) => x.onchange = syncRole);
+    syncRole();
     $('#rf', el).onsubmit = async (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
-      const row = { name: f.name.trim(), email: f.email.trim() || null, active: !!f.active };
+      const planner = f.role !== 'referee';
+      const row = { name: f.name.trim(), email: f.email.trim() || null, active: f.role === 'planner' ? true : !!f.active, is_referee: f.role !== 'planner' };
       const err = $('#rf-err', el), btn = $('#rf button.primary', el);
       if (!row.name) { err.textContent = 'Vul een naam in.'; err.hidden = false; return; }
       if (r.id) row.id = r.id;
-      const plannerChanged = r.id && r.user_id && !!f.is_planner !== !!r.is_planner;
+      else row.invite_planner = planner;
+      const plannerChanged = r.id && planner !== isPlannerRef(r);
       // Keep the sheet open until the save really worked, so a failure is visible.
       btn.disabled = true; btn.textContent = 'Bezig met opslaan…'; err.hidden = true;
       try {
         await store.saveReferee(row);
-        if (plannerChanged) await store.setPlanner(r.id, !!f.is_planner);
+        if (plannerChanged) await store.setPlanner(r.id, planner);
         close();
         toast(r.id ? 'Opgeslagen' : `${row.name} is toegevoegd`);
         if (store.mode === 'cloud') await refresh();
@@ -1181,11 +1206,11 @@ function plannerOverzicht(view) {
       ${menuLink('wedstrijden', ICONS.ball, 'Wedstrijden', 'Alle wedstrijden bekijken, toevoegen of wijzigen',
         `${pill(coming.length, 'komend', '')}`)}
       ${menuLink('scheidsrechters', ICONS.people, 'Scheidsen', 'Scheidsrechters, contactgegevens en aanstellingen',
-        `${pill(referees.filter((r) => r.active !== false).length, 'actief', '')}`)}
+        `${pill(referees.filter((r) => r.active !== false && r.is_referee !== false).length, 'actief', '')}`)}
       ${menuLink('meldingen', ICONS.bell, 'Meldingen', 'Afmeldingen, wijzigingen en aanbiedingen',
         `${pill(offered, 'aanbod', 'done')}${pill(unread, 'nieuw')}`)}
     </section>
-    <section class="card day-list">
+    ${referees.find((r) => r.id === me)?.is_referee === false ? '' : `<section class="card day-list">
       <header class="day-head"><h2>Ik fluit zelf ook</h2></header>
       ${me ? menuLink('mijn', ICONS.whistle, 'Mijn fluiten', 'De wedstrijden die je zelf fluit')
         + menuLink('beschikbaarheid', ICONS.calendar, 'Mijn beschikbaarheid', 'Geef door wanneer je zelf kunt fluiten')
@@ -1194,7 +1219,7 @@ function plannerOverzicht(view) {
           return prefs.length ? 'Graag: ' + esc(prefLabel(prefs, CATEGORIES)) : 'Geef je voorkeur op voor groepen en teams';
         })())
         : '<p class="muted list-empty">Je staat nog niet als scheidsrechter in de lijst.</p>'}
-    </section>
+    </section>`}
     <section class="card day-list">
       <header class="day-head"><h2>Wedstrijden importeren</h2></header>
       ${(() => { const sl = sportlinkStatus(); return `

@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v5';
+const KEY = 'scheidsapp-demo-v6';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -18,6 +18,8 @@ function seed() {
     { id: 'r3', name: 'Chris Bakker', email: '', pref_categories: [], avoid_categories: [], active: true, user_id: null },
     // Daan is planner én scheidsrechter.
     { id: 'r4', name: 'Daan Visser', email: 'daan@example.nl', pref_categories: ['1e', '2e'], avoid_categories: [], active: true, user_id: 'u4', is_planner: true },
+    // Eva plant alleen en fluit zelf niet.
+    { id: 'r5', name: 'Eva Mulder', email: 'eva@example.nl', pref_categories: [], avoid_categories: [], active: true, is_referee: false, user_id: 'u5', is_planner: true },
   ];
   const mk = (date, time, home, away, field, category) => ({ id: uid(), date, time, duration: 60, home, away, field, category, referee_id: null, published: false, external_ref: false });
   const matches = [
@@ -116,7 +118,7 @@ export function createLocalStore() {
     },
     async saveReferee(r) {
       if (r.id) Object.assign(db.referees.find((x) => x.id === r.id), r);
-      else db.referees.push({ active: true, pref_categories: [], avoid_categories: [], user_id: null, ...r, id: uid() });
+      else db.referees.push({ active: true, is_referee: true, pref_categories: [], avoid_categories: [], user_id: null, ...r, is_planner: !!r.invite_planner, id: uid() });
       save();
     },
     async deleteReferee(id) {
@@ -151,9 +153,8 @@ export function createLocalStore() {
     },
     async setPlanner(refereeId, value) {
       const r = db.referees.find((x) => x.id === refereeId);
-      if (!r.user_id && !r.is_planner) throw new Error('Deze scheidsrechter heeft nog niet ingelogd.');
       if (refereeId === db.user.referee_id && !value) throw new Error('Je kunt jezelf niet als planner verwijderen.');
-      r.is_planner = value;
+      r.is_planner = value; r.invite_planner = value;
       save();
     },
     async saveAvailability(a) {

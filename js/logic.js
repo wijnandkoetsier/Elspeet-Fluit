@@ -43,7 +43,7 @@ export function candidates(match, { referees, availability, matches, offers = []
   const end = matchEnd(match);
 
   return referees
-    .filter((r) => r.active !== false)
+    .filter((r) => r.active !== false && r.is_referee !== false)
     .map((r) => {
       const av = availability.find((a) => a.referee_id === r.id && a.date === match.date);
       const offered = offers.some((o) => o.match_id === match.id && o.referee_id === r.id);
