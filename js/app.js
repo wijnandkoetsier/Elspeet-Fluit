@@ -83,6 +83,8 @@ const ICONS = {
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
   bell: svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
   more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
+  refresh: svg('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>'),
+  upload: svg('<path d="M12 16V4M7 8.5l5-5 5 5M4.5 20h15"/>'),
   warn: svg('<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5h.01"/>'),
 };
 // Tabs per role. Hidden routes are reachable via the "Meer" page and light up their parent tab.
@@ -242,21 +244,18 @@ function planDays() {
 
 const DAY_FILTERS = [['alle', 'Alle'], ['open', 'Open'], ['concept', 'Concept']];
 
-function planning(view) {
-  const { matches, referees, availability } = state.data;
-  const days = planDays();
+// Shared date navigator (Planning and Wedstrijden): arrows, day tiles, optional filter. Uses state.day.
+function pickDay(days) {
   const today = todayISO();
   if (!state.day || !days.includes(state.day)) state.day = days.find((d) => d >= today) || days[days.length - 1];
-  const day = state.day;
-  const idx = days.indexOf(day);
-  const filter = state.filter || 'alle';
-  const dayMatches = matches.filter((m) => m.date === day).sort((a, b) => a.time.localeCompare(b.time));
-  const own = dayMatches.filter((m) => !m.external_ref);
-  const open = own.filter((m) => !m.referee_id);
-  const unpublished = own.filter((m) => m.referee_id && !m.published);
-  const refName = (id) => referees.find((r) => r.id === id)?.name || '?';
-  const firstSat = days.find((d) => d >= today && new Date(d + 'T12:00:00').getDay() === 6);
+  return state.day;
+}
 
+function dateNav(days, day, { filter = null } = {}) {
+  const { matches } = state.data;
+  const today = todayISO();
+  const idx = days.indexOf(day);
+  const firstSat = days.find((d) => d >= today && new Date(d + 'T12:00:00').getDay() === 6);
   const tile = (d) => {
     const ms = matches.filter((m) => m.date === d);
     const hasOpen = ms.some((m) => !m.external_ref && !m.referee_id);
@@ -269,6 +268,44 @@ function planning(view) {
       <span class="dots">${hasIssue ? '<i class="issue-dot" title="Probleem met aanstelling"></i>' : ''}${hasOpen ? '<i class="open-dot" title="Open wedstrijden"></i>' : ''}</span>
     </button>`;
   };
+  return `
+    <section class="card date-nav">
+      <div class="date-head">
+        <button class="icon-btn" id="day-prev" aria-label="Vorige dag" ${idx <= 0 ? 'disabled' : ''}>${ICONS.prev}</button>
+        <h2>${ICONS.date}<span>${fmtDate(day, { weekday: 'short', day: 'numeric', month: 'long' })}</span></h2>
+        <button class="icon-btn" id="day-next" aria-label="Volgende dag" ${idx >= days.length - 1 ? 'disabled' : ''}>${ICONS.next}</button>
+        <button class="icon-btn" id="export" aria-label="Programma exporteren" title="Programma exporteren">${ICONS.download}</button>
+      </div>
+      <div class="day-tiles" id="day-tiles">${days.map(tile).join('')}</div>
+      ${filter ? `<div class="filter-seg" role="tablist">${DAY_FILTERS.map(([k, label]) =>
+        `<button role="tab" aria-selected="${k === filter}" class="${k === filter ? 'on' : ''}" data-filter="${k}">${label}</button>`).join('')}</div>` : ''}
+    </section>`;
+}
+
+function bindDateNav(view, days, day) {
+  const idx = days.indexOf(day);
+  const go = (d) => { state.day = d; render(); };
+  view.querySelectorAll('[data-day]').forEach((b) => b.onclick = () => go(b.dataset.day));
+  $('#day-prev').onclick = () => idx > 0 && go(days[idx - 1]);
+  $('#day-next').onclick = () => idx < days.length - 1 && go(days[idx + 1]);
+  view.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
+  const tiles = $('#day-tiles'), on = $('.day-tile.on', tiles);
+  if (on) tiles.scrollLeft = on.offsetLeft - tiles.offsetLeft - 4;
+  const refName = (id) => state.data.referees.find((r) => r.id === id)?.name || '?';
+  $('#export').onclick = () => exportDay(day,
+    state.data.matches.filter((m) => m.date === day).sort((a, b) => a.time.localeCompare(b.time)), refName);
+}
+
+function planning(view) {
+  const { matches, referees } = state.data;
+  const days = planDays();
+  const day = pickDay(days);
+  const filter = state.filter || 'alle';
+  const dayMatches = matches.filter((m) => m.date === day).sort((a, b) => a.time.localeCompare(b.time));
+  const own = dayMatches.filter((m) => !m.external_ref);
+  const open = own.filter((m) => !m.referee_id);
+  const unpublished = own.filter((m) => m.referee_id && !m.published);
+  const refName = (id) => referees.find((r) => r.id === id)?.name || '?';
 
   const shown = dayMatches.filter((m) => filter === 'alle'
     || (filter === 'open' && !m.external_ref && !m.referee_id)
@@ -298,32 +335,16 @@ function planning(view) {
   const pill = !own.length ? '' : `${issues ? `<span class="pill issue">${issues} ${issues === 1 ? 'probleem' : 'problemen'}</span>` : ''}${open.length ? `<span class="pill open">${open.length} open</span>` : issues ? '' : '<span class="pill done">Alles ingevuld</span>'}`;
 
   view.innerHTML = `
-    <section class="card date-nav">
-      <div class="date-head">
-        <button class="icon-btn" id="day-prev" aria-label="Vorige dag" ${idx <= 0 ? 'disabled' : ''}>${ICONS.prev}</button>
-        <h2>${ICONS.date}<span>${fmtDate(day, { weekday: 'short', day: 'numeric', month: 'long' })}</span></h2>
-        <button class="icon-btn" id="day-next" aria-label="Volgende dag" ${idx >= days.length - 1 ? 'disabled' : ''}>${ICONS.next}</button>
-        <button class="icon-btn" id="export" aria-label="Programma exporteren" title="Programma exporteren">${ICONS.download}</button>
-      </div>
-      <div class="day-tiles" id="day-tiles">${days.map(tile).join('')}</div>
-      <div class="filter-seg" role="tablist">${DAY_FILTERS.map(([k, label]) =>
-        `<button role="tab" aria-selected="${k === filter}" class="${k === filter ? 'on' : ''}" data-filter="${k}">${label}</button>`).join('')}</div>
-    </section>
+    ${dateNav(days, day, { filter })}
     ${open.length ? '<div class="actions top"><button class="btn small" id="propose">✨ Voorstel maken</button></div>' : ''}
     ${dayList(fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }), pill, rows)}
     ${whoCanReferee(day)}
     ${unpublished.length ? `<div class="publish-space"></div>
       <div class="publish-bar"><button class="btn primary" id="publish">Publiceren (${unpublished.length})</button></div>` : ''}`;
 
-  const go = (d) => { state.day = d; render(); };
-  view.querySelectorAll('[data-day]').forEach((b) => b.onclick = () => go(b.dataset.day));
-  $('#day-prev').onclick = () => idx > 0 && go(days[idx - 1]);
-  $('#day-next').onclick = () => idx < days.length - 1 && go(days[idx + 1]);
-  view.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
+  bindDateNav(view, days, day);
   view.querySelectorAll('[data-assign]').forEach((b) => b.onclick = () => assignSheet(b.dataset.assign));
   $('#all-avail').onclick = () => availabilitySheet(day);
-  const tiles = $('#day-tiles'), on = $('.day-tile.on', tiles);
-  if (on) tiles.scrollLeft = on.offsetLeft - tiles.offsetLeft - 4;
   const prop = $('#propose');
   if (prop) prop.onclick = () => {
     const list = proposeDay(day, state.data);
@@ -335,7 +356,6 @@ function planning(view) {
   const pub = $('#publish');
   if (pub) pub.onclick = () => act(() => store.updateMatches(unpublished.map((m) => m.id), { published: true }),
     'Planning gepubliceerd. Scheidsrechters zien hun aanstelling nu in de app.');
-  $('#export').onclick = () => exportDay(day, dayMatches, refName);
 }
 
 // Availability of every active referee on a day, grouped.
@@ -488,52 +508,36 @@ function assignSheet(matchId) {
 
 // ---------- Planner: wedstrijden ----------
 function wedstrijden(view) {
-  const today = todayISO();
-  const showPast = state.showPast;
-  const list = state.data.matches.filter((m) => showPast || m.date >= today)
-    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  const byDay = {};
-  list.forEach((m) => (byDay[m.date] ||= []).push(m));
+  const days = planDays();
+  const day = pickDay(days);
+  const ms = state.data.matches.filter((m) => m.date === day).sort((a, b) => a.time.localeCompare(b.time));
   view.innerHTML = `
-    ${sportlinkCard()}
-    <div class="actions top">
-      <button class="btn primary" id="add-match">＋ Wedstrijd</button>
-      <button class="btn" id="import">📥 CSV importeren</button>
-      <label class="toggle"><input type="checkbox" id="past" ${showPast ? 'checked' : ''}> Ook verleden</label>
-    </div>
-    ${Object.entries(byDay).map(([d, ms]) => dayList(
-      fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' }),
+    ${dateNav(days, day)}
+    <div class="actions top"><button class="btn primary" id="add-match">＋ Wedstrijd</button></div>
+    ${dayList(
+      fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }),
       `<span class="pill">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>`,
       ms.map((m) => matchRow(m, {
         sub: [m.field, `${m.duration || 90} min`, m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
         action: '<span class="chev" aria-hidden="true">›</span>',
         attrs: `data-edit="${m.id}" role="button" tabindex="0"`,
-      })).join(''),
-    )).join('') || '<section class="card empty"><p>Geen komende wedstrijden.</p></section>'}`;
-  $('#add-match').onclick = () => matchForm({ date: state.day || today, time: '10:00', duration: 60 });
-  bindSportlink();
-  $('#import').onclick = importSheet;
-  $('#past').onchange = (e) => { state.showPast = e.target.checked; render(); };
+      })).join('') || '<p class="muted list-empty">Geen wedstrijden op deze dag.</p>',
+    )}`;
+  bindDateNav(view, days, day);
+  $('#add-match').onclick = () => matchForm({ date: day, time: '10:00', duration: 60 });
   view.querySelectorAll('[data-edit]').forEach((el) => el.onclick = () =>
     matchForm(state.data.matches.find((m) => m.id === el.dataset.edit)));
 }
 
-// Sportlink: last sync + "fetch now" (cloud: via our own hosting; demo: sample data).
-function sportlinkCard() {
+// Sportlink: status line for the Meer page (cloud: via our own hosting; demo: sample data).
+function sportlinkStatus() {
   const last = state.data.lastSync;
-  const configured = store.mode === 'demo' || SPORTLINK_SYNC_URL;
+  const canFetch = store.mode === 'demo' || !!SPORTLINK_SYNC_URL;
   const when = last ? new Date(last.at).toLocaleString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
-  const status = !configured
-    ? 'Nog niet gekoppeld. Zie de README, stap Sportlink.'
-    : !last ? 'Nog niet opgehaald.'
-    : last.ok ? `Laatst bijgewerkt ${when}: ${last.added} nieuw, ${last.updated} gewijzigd, ${last.removed} vervallen.`
+  const text = !last ? (canFetch ? 'Nog niet opgehaald.' : 'Nog niet gekoppeld. Zie de README, stap Sportlink.')
+    : last.ok ? `Bijgewerkt ${when}: ${last.added} nieuw, ${last.updated} gewijzigd, ${last.removed} vervallen.`
     : `Laatste poging mislukt (${when}): ${last.message || 'onbekende fout'}`;
-  return `
-    <section class="card sportlink ${last && !last.ok ? 'failed' : ''}">
-      <div class="sl-head"><b>Sportlink</b>${last?.ok ? '<span class="pill done">Gekoppeld</span>' : ''}</div>
-      <p class="muted">${esc(status)}${store.mode === 'demo' ? ' In de demo haalt de knop voorbeeldwedstrijden op.' : ''}</p>
-      ${configured ? '<button class="btn block" id="sl-sync">Nu ophalen uit Sportlink</button>' : ''}
-    </section>`;
+  return { text, canFetch, ok: !!last?.ok, failed: last && !last.ok };
 }
 
 function bindSportlink() {
@@ -541,7 +545,7 @@ function bindSportlink() {
   if (!b) return;
   b.onclick = async () => {
     b.disabled = true;
-    b.textContent = 'Bezig met ophalen…';
+    $('.sub', b).textContent = 'Bezig met ophalen…';
     try {
       const r = await store.syncSportlink(SPORTLINK_SYNC_URL);
       toast(`Sportlink: ${r.added} nieuw, ${r.updated} gewijzigd, ${r.removed} vervallen.`);
@@ -549,7 +553,7 @@ function bindSportlink() {
     } catch (e) {
       toast(e.message, true);
       b.disabled = false;
-      b.textContent = 'Nu ophalen uit Sportlink';
+      render();
     }
   };
 }
@@ -956,9 +960,20 @@ function meer(view) {
         : '<p class="muted list-empty">Je staat nog niet als scheidsrechter in de lijst.</p>'}
     </section>
     <section class="card day-list">
+      <header class="day-head"><h2>Wedstrijden importeren</h2></header>
+      ${(() => { const sl = sportlinkStatus(); return `
+      <button class="mrow menu ${sl.failed ? 'failed' : ''}" id="sl-sync" ${sl.canFetch ? '' : 'disabled'}><span class="micon">${ICONS.refresh}</span>
+        <div class="info"><b>Sportlink${sl.canFetch ? ': nu ophalen' : ''}</b><div class="sub">${esc(sl.text)}${store.mode === 'demo' ? ' In de demo komen er voorbeeldwedstrijden bij.' : ''}</div></div>
+        ${sl.ok ? '<span class="pill done">Gekoppeld</span>' : ''}</button>`; })()}
+      <button class="mrow menu" id="csv-import"><span class="micon">${ICONS.upload}</span>
+        <div class="info"><b>CSV importeren</b><div class="sub">Wedstrijden uit een Excel- of CSV-bestand</div></div><span class="chev" aria-hidden="true">›</span></button>
+    </section>
+    <section class="card day-list">
       <header class="day-head"><h2>App</h2></header>
       ${link('profiel', ICONS.settings, 'Instellingen', 'Naam, tekstgrootte, app installeren, uitloggen')}
     </section>`;
+  bindSportlink();
+  $('#csv-import').onclick = importSheet;
 }
 
 // ---------- UI helpers ----------
