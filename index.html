@@ -21,20 +21,6 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <div id="splash" class="splash" aria-label="Elspeet Fluit wordt geladen"><img src="icons/logo.png" alt=""><span class="ball" aria-hidden="true">⚽</span></div>
-  <script>
-    // Only when the app is opened, not when a page is refreshed (also not after a refresh within the same visit).
-    (function () {
-      var reload = false, seen = false;
-      try { reload = (performance.getEntriesByType('navigation')[0] || {}).type === 'reload'; } catch (e) {}
-      try { seen = sessionStorage.getItem('splash-seen') === '1'; sessionStorage.setItem('splash-seen', '1'); } catch (e) {}
-      var el = document.getElementById('splash');
-      if (reload || seen) { el.remove(); return; }
-      // Gone 2 seconds after opening (0.3 s fade included), whether or not the app has loaded yet.
-      setTimeout(function () { el.classList.add('gone'); setTimeout(function () { el.remove(); }, 300); },
-        Math.max(0, 1600 - performance.now()));
-    })();
-  </script>
   <header class="topbar">
     <div class="brand"><img src="icons/logo.png" alt="Logo VV Elspeet"><div><b id="app-name">Elspeet Fluit</b><small id="club"></small></div></div>
     <span id="demo-badge" class="tag demo" hidden>demo</span>

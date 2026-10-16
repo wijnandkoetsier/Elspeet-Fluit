@@ -48,9 +48,8 @@ async function boot() {
   try { await store.init(); } catch (e) { toast(e.message, true); }
   store.onChange(refresh);
   window.addEventListener('hashchange', render);
-  await refresh().catch(() => {});
+  await refresh();
 }
-
 
 async function refresh() {
   if (store.user) {
