@@ -158,9 +158,9 @@ function loginView() {
     return `
       <section class="card login">
         <h2>Vul je code in</h2>
-        <p>We hebben een e-mail gestuurd naar <b>${esc(l.email)}</b> met een code van 6 cijfers.</p>
+        <p>We hebben een e-mail gestuurd naar <b>${esc(l.email)}</b> met een inlogcode.</p>
         <form id="code-form">
-          <input name="token" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" class="code-input" aria-label="Code">
+          <input name="token" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,13}" maxlength="13" placeholder="Code uit de mail" class="code-input" aria-label="Code" title="De code uit de mail (6 tot 10 cijfers)">
           <button class="btn primary block">Inloggen</button>
         </form>
         <p class="muted">Staat er geen code in de mail, maar alleen een link? Tik dan op de link in de mail, het liefst op dit toestel.</p>
@@ -198,7 +198,8 @@ function bindLogin() {
   if (cf) {
     cf.onsubmit = (e) => {
       e.preventDefault();
-      const token = new FormData(e.target).get('token').trim();
+      // Supabase sends 6 to 10 digits depending on the project setting; ignore spaces from copy-paste.
+      const token = new FormData(e.target).get('token').replace(/\D/g, '');
       act(async () => { await store.verifyCode({ email: state.login.email, token }); state.login = null; location.hash = ''; });
     };
     $('#code-back').onclick = () => { state.login = { email: state.login.email }; render(); };
