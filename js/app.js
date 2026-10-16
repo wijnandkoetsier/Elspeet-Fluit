@@ -687,20 +687,30 @@ function refForm(r) {
       <label class="check"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Actief (kan worden ingepland)</label>
       ${r.id ? `<label class="check"><input type="checkbox" name="is_planner" ${r.is_planner ? 'checked' : ''} ${r.user_id ? '' : 'disabled'}> Planner
         ${r.user_id ? '' : '<small class="muted">(kan pas na eerste keer inloggen)</small>'}</label>` : ''}
+      <p class="field-error" id="rf-err" hidden></p>
       <button class="btn primary block">Opslaan</button>
       ${r.id ? '<button type="button" class="btn danger block" id="del">Verwijderen</button>' : ''}
     </form>`, (el, close) => {
-    $('#rf', el).onsubmit = (e) => {
+    $('#rf', el).onsubmit = async (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
       const row = { name: f.name.trim(), email: f.email.trim() || null, active: !!f.active };
+      const err = $('#rf-err', el), btn = $('#rf button.primary', el);
+      if (!row.name) { err.textContent = 'Vul een naam in.'; err.hidden = false; return; }
       if (r.id) row.id = r.id;
       const plannerChanged = r.id && r.user_id && !!f.is_planner !== !!r.is_planner;
-      close();
-      act(async () => {
+      // Keep the sheet open until the save really worked, so a failure is visible.
+      btn.disabled = true; btn.textContent = 'Bezig met opslaan…'; err.hidden = true;
+      try {
         await store.saveReferee(row);
         if (plannerChanged) await store.setPlanner(r.id, !!f.is_planner);
-      }, 'Opgeslagen');
+        close();
+        toast(r.id ? 'Opgeslagen' : `${row.name} is toegevoegd`);
+        if (store.mode === 'cloud') await refresh();
+      } catch (ex) {
+        err.textContent = ex.message; err.hidden = false;
+        btn.disabled = false; btn.textContent = 'Opslaan';
+      }
     };
     const del = $('#del', el);
     if (del) del.onclick = async () => { if (await ask(`${r.name} verwijderen?`, 'Verwijderen')) { close(); act(() => store.deleteReferee(r.id), 'Verwijderd'); } };
