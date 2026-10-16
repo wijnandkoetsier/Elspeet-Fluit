@@ -108,14 +108,14 @@ const ICONS = {
   upload: svg('<path d="M12 16V4M7 8.5l5-5 5 5M4.5 20h15"/>'),
   warn: svg('<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5h.01"/>'),
 };
-// Tabs per role. Hidden routes are reachable via the "Meer" page and light up their parent tab.
+// Tabs per role. Hidden routes are reachable via Overzicht (planner) or Instellingen and light up their parent tab.
 const ROUTES = {
   planner: [
     ['planning', 'Planning', ICONS.planning],
     ['wedstrijden', 'Wedstrijden', ICONS.ball],
+    ['overzicht', 'Overzicht', ICONS.home],
     ['scheidsrechters', 'Scheidsen', ICONS.people],
     ['meldingen', 'Meldingen', ICONS.bell],
-    ['meer', 'Meer', ICONS.more],
   ],
   referee: [
     ['mijn', 'Mijn fluiten', ICONS.whistle],
@@ -125,9 +125,9 @@ const ROUTES = {
     ['profiel', 'Instellingen', ICONS.settings],
   ],
 };
-const HIDDEN = { planner: { mijn: 'meer', beschikbaarheid: 'meer', voorkeuren: 'meer', profiel: 'meer' }, referee: { voorkeuren: 'profiel' } };
-// The screen the app opens on (Overzicht sits in the middle of the tab bar for referees).
-const HOME = { planner: 'planning', referee: 'overzicht' };
+const HIDDEN = { planner: { mijn: 'overzicht', beschikbaarheid: 'overzicht', voorkeuren: 'overzicht', profiel: 'overzicht', meer: 'overzicht' }, referee: { voorkeuren: 'profiel' } };
+// The screen the app opens on: Overzicht, in the middle of the tab bar.
+const HOME = { planner: 'overzicht', referee: 'overzicht' };
 
 const unreadCount = () => state.data.notifications.filter((n) => !n.read_at).length;
 
@@ -152,7 +152,8 @@ function render() {
   nav.innerHTML = routes.map(([r, label, icon]) =>
     `<a href="#${r}" class="${r === activeTab ? 'active' : ''}"><span>${icon}${r === 'meldingen' && unread ? `<b class="badge">${unread > 9 ? '9+' : unread}</b>` : ''}</span>${label}</a>`).join('');
   try { unread ? navigator.setAppBadge?.(unread) : navigator.clearAppBadge?.(); } catch {}
-  const views = { planning, wedstrijden, scheidsrechters, overzicht, mijn, beschikbaarheid, voorkeuren, profiel, meldingen, meer };
+  const views = { planning, wedstrijden, scheidsrechters, overzicht: role === 'planner' ? plannerOverzicht : overzicht,
+    mijn, beschikbaarheid, voorkeuren, profiel, meldingen, meer: plannerOverzicht };
   view.innerHTML = '';
   views[route](view);
 }
@@ -1153,18 +1154,53 @@ function base64UrlToBytes(b64) {
 }
 
 // ---------- Meer (planner) ----------
-function meer(view) {
+// ---------- Planner: overzicht ----------
+// Short explanation, the tabs with what needs attention, and the former "Meer" items.
+const menuLink = (href, icon, title, sub, right = '') => `
+  <a class="mrow menu" href="#${href}"><span class="micon">${icon}</span>
+    <div class="info"><b>${title}</b><div class="sub">${sub}</div>${right && right.replace(/<[^>]+>/g, '') ? `<div class="menu-pills">${right}</div>` : ''}</div><span class="chev" aria-hidden="true">›</span></a>`;
+
+function plannerOverzicht(view) {
   const me = store.user.referee_id;
-  const link = (href, icon, title, sub) => `
-    <a class="mrow menu" href="#${href}"><span class="micon">${icon}</span>
-      <div class="info"><b>${title}</b><div class="sub">${sub}</div></div><span class="chev" aria-hidden="true">›</span></a>`;
+  const today = todayISO();
+  const { matches, referees, notifications } = state.data;
+  const offers = state.data.offers || [];
+  const coming = matches.filter((m) => m.date >= today);
+  const open = coming.filter((m) => !m.referee_id && !m.external_ref);
+  const concept = coming.filter((m) => m.referee_id && !m.published);
+  const issues = coming.filter((m) => assignmentIssue(m, state.data)).length;
+  const offered = open.filter((m) => offers.some((o) => o.match_id === m.id)).length;
+  const unread = notifications.filter((n) => !n.read_at).length;
+  const pill = (n, text, cls = 'open') => (n ? `<span class="pill ${cls}">${n} ${text}</span>` : '');
+
   view.innerHTML = `
+    <h2 class="hello">Hoi ${esc(store.user.name.split(' ')[0])}</h2>
+    <section class="card day-list">
+      <header class="day-head"><h2>Zo werkt het</h2></header>
+      <ol class="steps">
+        <li><b>Wedstrijden</b> komen elk uur uit Sportlink. Je kunt ze ook zelf toevoegen.</li>
+        <li><b>Scheidsrechters</b> geven hun beschikbaarheid en voorkeuren door, en kunnen zich aanbieden voor open wedstrijden.</li>
+        <li>In <b>Planning</b> wijs je per speeldag een scheidsrechter toe. Dat is eerst een concept.</li>
+        <li>Na <b>Publiceren</b> krijgt de scheidsrechter een melding en staat de wedstrijd bij Mijn fluiten.</li>
+      </ol>
+    </section>
+    <section class="card day-list">
+      <header class="day-head"><h2>Direct naar</h2></header>
+      ${menuLink('planning', ICONS.planning, 'Planning', 'Per speeldag toewijzen en publiceren',
+        `${pill(open.length, 'open')}${pill(concept.length, 'concept', '')}${pill(issues, 'probleem', 'issue')}`)}
+      ${menuLink('wedstrijden', ICONS.ball, 'Wedstrijden', 'Alle wedstrijden bekijken, toevoegen of wijzigen',
+        `${pill(coming.length, 'komend', '')}`)}
+      ${menuLink('scheidsrechters', ICONS.people, 'Scheidsen', 'Scheidsrechters, contactgegevens en aanstellingen',
+        `${pill(referees.filter((r) => r.active !== false).length, 'actief', '')}`)}
+      ${menuLink('meldingen', ICONS.bell, 'Meldingen', 'Afmeldingen, wijzigingen en aanbiedingen',
+        `${pill(offered, 'aanbod', 'done')}${pill(unread, 'nieuw')}`)}
+    </section>
     <section class="card day-list">
       <header class="day-head"><h2>Ik fluit zelf ook</h2></header>
-      ${me ? link('mijn', ICONS.whistle, 'Mijn fluiten', 'De wedstrijden die je zelf fluit')
-        + link('beschikbaarheid', ICONS.calendar, 'Mijn beschikbaarheid', 'Geef door wanneer je zelf kunt fluiten')
-        + link('voorkeuren', ICONS.ball, 'Wat fluit je graag?', (() => {
-          const prefs = state.data.referees.find((r) => r.id === me)?.pref_categories || [];
+      ${me ? menuLink('mijn', ICONS.whistle, 'Mijn fluiten', 'De wedstrijden die je zelf fluit')
+        + menuLink('beschikbaarheid', ICONS.calendar, 'Mijn beschikbaarheid', 'Geef door wanneer je zelf kunt fluiten')
+        + menuLink('voorkeuren', ICONS.ball, 'Wat fluit je graag?', (() => {
+          const prefs = referees.find((r) => r.id === me)?.pref_categories || [];
           return prefs.length ? 'Graag: ' + esc(prefLabel(prefs, CATEGORIES)) : 'Geef je voorkeur op voor groepen en teams';
         })())
         : '<p class="muted list-empty">Je staat nog niet als scheidsrechter in de lijst.</p>'}
@@ -1180,7 +1216,7 @@ function meer(view) {
     </section>
     <section class="card day-list">
       <header class="day-head"><h2>App</h2></header>
-      ${link('profiel', ICONS.settings, 'Instellingen', 'Naam, tekstgrootte, app installeren, uitloggen')}
+      ${menuLink('profiel', ICONS.settings, 'Instellingen', 'Naam, tekstgrootte, app installeren, uitloggen')}
     </section>`;
   bindSportlink();
   $('#csv-import').onclick = importSheet;
