@@ -245,9 +245,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .pill.done { background: var(--brand-soft); color: var(--brand); box-shadow: none; }
 .mrow {
   display: grid; grid-template-columns: 3.2em minmax(0, 1fr) auto; gap: 12px; align-items: center;
-  padding: 12px 14px;
+  padding: 16px 14px;
 }
 .mrow + .mrow { border-top: 1px solid var(--line); }
+/* Matches: a grey band between them, so each match stands on its own */
+.mrow:not(.menu) + .mrow:not(.menu) { border-top: 8px solid var(--soft); }
 .mrow.dim { opacity: .55; }
 .mrow[data-edit] { cursor: pointer; }
 .mrow[data-edit]:active { background: var(--soft); }
