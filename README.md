@@ -5,6 +5,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 ## Wat kan het?
 
 **Scheidsrechter**
+- **Overzicht** als startpagina: komende wedstrijden die je fluit, de laatste meldingen, en open wedstrijden zonder scheidsrechter met de knop **Ik kan fluiten** (de planner krijgt bericht en ziet je bovenaan bij het toewijzen)
 - Beschikbaarheid per speeldag doorgeven: ja/nee, van–tot en maximaal aantal wedstrijden
 - Langere afwezigheid (vakantie, blessure) in één keer afmelden
 - Eigen gepubliceerde aanstellingen zien en in de agenda zetten (.ics)
@@ -75,7 +76,7 @@ update public.profiles set role = 'planner' where email = 'jouw@email.nl';
 Andere planners wijs je daarna in de app aan: **Scheidsen** → naam → **Planner** (kan zodra die persoon één keer heeft ingelogd).
 
 ### 4. Scheidsrechters uitnodigen
-Voeg scheidsrechters toe bij **Scheidsen** met hun e-mailadres en deel de link naar de app. Ze loggen in met een code van 6 cijfers die ze per e-mail krijgen (geen wachtwoord) en worden automatisch gekoppeld. Een onbekend e-mailadres wordt geweigerd.
+Voeg scheidsrechters toe bij **Scheidsen** met hun e-mailadres en deel de link naar de app. Ze loggen in met een code die ze per e-mail krijgen (geen wachtwoord) en worden automatisch gekoppeld. Een onbekend e-mailadres wordt geweigerd.
 
 **Op de telefoon zetten:**
 - iPhone: open in Safari → **Deel** → **Zet op beginscherm**

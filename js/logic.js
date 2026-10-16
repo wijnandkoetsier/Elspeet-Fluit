@@ -37,7 +37,7 @@ export function seasonCounts(matches, date) {
  * Rank referees for a match.
  * status: 'ok' (available, fits), 'unknown' (nothing filled in), 'no' (unavailable or conflict).
  */
-export function candidates(match, { referees, availability, matches }) {
+export function candidates(match, { referees, availability, matches, offers = [] }) {
   const counts = seasonCounts(matches, match.date);
   const start = toMin(match.time);
   const end = matchEnd(match);
@@ -46,14 +46,16 @@ export function candidates(match, { referees, availability, matches }) {
     .filter((r) => r.active !== false)
     .map((r) => {
       const av = availability.find((a) => a.referee_id === r.id && a.date === match.date);
+      const offered = offers.some((o) => o.match_id === match.id && o.referee_id === r.id);
       const sameDay = matches.filter((m) => m.id !== match.id && m.referee_id === r.id && m.date === match.date);
       const conflict = sameDay.find((m) => overlaps(m, match));
       const reasons = [];
       let status = 'ok';
 
       if (!av) {
-        status = 'unknown';
-        reasons.push('Niets ingevuld');
+        // Offering for this match counts as being available for it.
+        status = offered ? 'ok' : 'unknown';
+        if (!offered) reasons.push('Niets ingevuld');
       } else if (!av.available) {
         status = 'no';
         reasons.push('Niet beschikbaar');
@@ -68,12 +70,13 @@ export function candidates(match, { referees, availability, matches }) {
       const avoid = r.avoid_categories || [];
       const likes = match.category && prefs.includes(match.category);
       const dislikes = match.category && avoid.includes(match.category);
+      if (offered) reasons.unshift('Biedt zich aan');
       if (likes) reasons.push('Fluit dit graag');
       if (dislikes) reasons.push('Liever niet deze categorie');
 
       const statusRank = { ok: 0, unknown: 1, no: 2 }[status];
-      const score = statusRank * 1000 + (dislikes ? 50 : 0) - (likes ? 50 : 0) + (counts[r.id] || 0);
-      return { referee: r, status, reasons, season: counts[r.id] || 0, day: sameDay.length, score };
+      const score = statusRank * 1000 - (offered ? 100 : 0) + (dislikes ? 50 : 0) - (likes ? 50 : 0) + (counts[r.id] || 0);
+      return { referee: r, status, reasons, season: counts[r.id] || 0, day: sameDay.length, score, offered };
     })
     .sort((a, b) => a.score - b.score || a.referee.name.localeCompare(b.referee.name));
 }

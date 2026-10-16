@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, SPORTLINK_SYNC_URL, 
 import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
-  assignmentIssue, defaultDuration, fieldName,
+  assignmentIssue, defaultDuration, fieldName, overlaps,
 } from './logic.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -12,7 +12,7 @@ const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short' })
   new Date(d + 'T12:00:00').toLocaleDateString('nl-NL', opts);
 
 let store;
-const state = { data: { matches: [], referees: [], availability: [], notifications: [] }, day: null, installPrompt: null, login: null };
+const state = { data: { matches: [], referees: [], availability: [], notifications: [], offers: [] }, day: null, installPrompt: null, login: null };
 
 // ---------- Tekstgrootte (per toestel) ----------
 const TEXT_SIZES = [['klein', 'Klein', 14], ['normaal', 'Normaal', 16], ['groot', 'Groot', 18], ['extra', 'Extra groot', 20]];
@@ -87,6 +87,7 @@ const ICONS = {
   next: svg('<path d="M9 5l7 7-7 7"/>'),
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
   bell: svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
+  home: svg('<path d="M4 11l8-6.5 8 6.5"/><path d="M6.5 9.5V20h11V9.5"/><path d="M10 20v-5h4v5"/>'),
   more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
   refresh: svg('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>'),
   upload: svg('<path d="M12 16V4M7 8.5l5-5 5 5M4.5 20h15"/>'),
@@ -102,6 +103,7 @@ const ROUTES = {
     ['meer', 'Meer', ICONS.more],
   ],
   referee: [
+    ['overzicht', 'Overzicht', ICONS.home],
     ['mijn', 'Mijn fluiten', ICONS.whistle],
     ['beschikbaarheid', 'Beschikbaar', ICONS.calendar],
     ['meldingen', 'Meldingen', ICONS.bell],
@@ -133,7 +135,7 @@ function render() {
   nav.innerHTML = routes.map(([r, label, icon]) =>
     `<a href="#${r}" class="${r === activeTab ? 'active' : ''}"><span>${icon}${r === 'meldingen' && unread ? `<b class="badge">${unread > 9 ? '9+' : unread}</b>` : ''}</span>${label}</a>`).join('');
   try { unread ? navigator.setAppBadge?.(unread) : navigator.clearAppBadge?.(); } catch {}
-  const views = { planning, wedstrijden, scheidsrechters, mijn, beschikbaarheid, profiel, meldingen, meer };
+  const views = { planning, wedstrijden, scheidsrechters, overzicht, mijn, beschikbaarheid, profiel, meldingen, meer };
   view.innerHTML = '';
   views[route](view);
 }
@@ -158,9 +160,9 @@ function loginView() {
     return `
       <section class="card login">
         <h2>Vul je code in</h2>
-        <p>We hebben een e-mail gestuurd naar <b>${esc(l.email)}</b> met een code van 6 cijfers.</p>
+        <p>We hebben een e-mail gestuurd naar <b>${esc(l.email)}</b> met een inlogcode.</p>
         <form id="code-form">
-          <input name="token" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" class="code-input" aria-label="Code">
+          <input name="token" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,13}" maxlength="13" placeholder="Code uit de mail" class="code-input" aria-label="Code" title="De code uit de mail (6 tot 10 cijfers)">
           <button class="btn primary block">Inloggen</button>
         </form>
         <p class="muted">Staat er geen code in de mail, maar alleen een link? Tik dan op de link in de mail, het liefst op dit toestel.</p>
@@ -198,7 +200,8 @@ function bindLogin() {
   if (cf) {
     cf.onsubmit = (e) => {
       e.preventDefault();
-      const token = new FormData(e.target).get('token').trim();
+      // Supabase sends 6 to 10 digits depending on the project setting; ignore spaces from copy-paste.
+      const token = new FormData(e.target).get('token').replace(/\D/g, '');
       act(async () => { await store.verifyCode({ email: state.login.email, token }); state.login = null; location.hash = ''; });
     };
     $('#code-back').onclick = () => { state.login = { email: state.login.email }; render(); };
@@ -331,6 +334,8 @@ function planning(view) {
       const n = candidates(m, state.data).filter((c) => c.status === 'ok').length;
       parts.push(`<span class="st ${n ? 'ok' : 'none'}">${n ? `${n} beschikbaar` : 'niemand beschikbaar'}</span>`);
       if (m.sportlink_referee) parts.push(`<span class="sl-ref">In Sportlink: ${esc(m.sportlink_referee)}</span>`);
+      const offeredBy = (state.data.offers || []).filter((o) => o.match_id === m.id).map((o) => refName(o.referee_id));
+      if (offeredBy.length) parts.push(`<span class="offer-text">✋ ${esc(offeredBy.join(', '))} ${offeredBy.length === 1 ? 'biedt' : 'bieden'} zich aan</span>`);
       action = `<button class="btn pill-btn assign" data-assign="${m.id}">Toewijzen</button>`;
     }
     return matchRow(m, { sub: parts.join('<span class="sep">·</span>'), action });
@@ -719,6 +724,63 @@ function refForm(r) {
   });
 }
 
+// ---------- Referee: overzicht ----------
+const OPEN_DAYS_AHEAD = 28;
+
+function overzicht(view) {
+  const me = store.user.referee_id;
+  const today = todayISO();
+  const { matches, notifications } = state.data;
+  const offers = state.data.offers || [];
+  const byTime = (a, b) => (a.date + a.time).localeCompare(b.date + b.time);
+  const horizon = new Date(today + 'T12:00:00'); horizon.setDate(horizon.getDate() + OPEN_DAYS_AHEAD);
+  const until = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`;
+  const mine = matches.filter((m) => m.referee_id === me && m.published && m.date >= today).sort(byTime);
+  const myDay = matches.filter((m) => m.referee_id === me && m.date >= today);
+  const open = matches.filter((m) => !m.referee_id && !m.external_ref && m.date >= today && m.date <= until).sort(byTime);
+  const todo = availabilityDates(matches).filter((d) => !state.data.availability.some((a) => a.referee_id === me && a.date === d));
+  const latest = notifications.slice(0, 3);
+  const unread = notifications.filter((n) => !n.read_at).length;
+
+  const openRows = open.map((m) => {
+    const offered = offers.some((o) => o.match_id === m.id && o.referee_id === me);
+    const busy = myDay.find((x) => overlaps(x, m));
+    const action = offered
+      ? `<button class="btn pill-btn offered" data-unoffer="${m.id}" title="Aanbod intrekken">✓ Aangeboden</button>`
+      : busy ? `<span class="muted small-note">Je fluit dan al</span>`
+      : `<button class="btn pill-btn assign" data-offer="${m.id}">Ik kan fluiten</button>`;
+    return matchRow(m, { time: m.time, sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>'), action });
+  }).join('');
+
+  view.innerHTML = `
+    <h2 class="hello">Hoi ${esc(store.user.name.split(' ')[0])}</h2>
+    ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
+    ${todo.length ? `<a class="card warn tap block" href="#beschikbaarheid">📅 Vul je beschikbaarheid in voor ${todo.length} dag(en) →</a>` : ''}
+    ${dayList('Ik fluit', `<span class="pill ${mine.length ? 'done' : ''}">${mine.length} komend</span>`,
+      (mine.slice(0, 3).map((m) => matchRow(m, {
+        sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
+        action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
+      })).join('') || '<p class="muted list-empty">Je hebt nog geen aanstellingen.</p>')
+      + (mine.length > 3 ? `<a class="link-row pad-row" href="#mijn"><span>Alle ${mine.length} wedstrijden</span>${ICONS.arrow}</a>` : ''))}
+    ${dayList('Laatste meldingen', unread ? `<span class="pill open">${unread} nieuw</span>` : '',
+      (latest.map(notifRow).join('') || '<p class="muted list-empty">Nog geen meldingen.</p>')
+      + (notifications.length ? `<a class="link-row pad-row" href="#meldingen"><span>Alle meldingen</span>${ICONS.arrow}</a>` : ''))}
+    ${dayList('Open wedstrijden', `<span class="pill ${open.length ? 'open' : ''}">${open.length} zonder scheids</span>`,
+      (openRows ? `<p class="muted list-intro">Nog geen scheidsrechter voor de komende ${OPEN_DAYS_AHEAD / 7} weken. Tik op <b>Ik kan fluiten</b>, dan krijgt de planner bericht.</p>${openRows}`
+        : '<p class="muted list-empty">Alle wedstrijden van de komende weken hebben een scheidsrechter.</p>'))}`;
+
+  view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () => calendarSheet(matches.find((x) => x.id === b.dataset.ics)));
+  bindNotifRows(view);
+  view.querySelectorAll('[data-offer]').forEach((b) => b.onclick = () => {
+    b.disabled = true;
+    act(() => store.addOffer(b.dataset.offer), 'Doorgegeven: de planner weet dat je kunt fluiten.');
+  });
+  view.querySelectorAll('[data-unoffer]').forEach((b) => b.onclick = async () => {
+    if (!await ask('Aanbod intrekken? De planner ziet dan niet meer dat je kunt.', 'Intrekken')) return;
+    act(() => store.removeOffer(b.dataset.unoffer), 'Aanbod ingetrokken');
+  });
+}
+
 // ---------- Referee: mijn wedstrijden ----------
 function mijn(view) {
   const me = store.user.referee_id;
@@ -956,7 +1018,25 @@ function profiel(view) {
 }
 
 // ---------- Meldingen ----------
-const KIND_ICON = { assigned: '✓', changed: '↻', withdrawn: '✕', cancelled: '✕', unavailable: '!' };
+const KIND_ICON = { assigned: '✓', changed: '↻', withdrawn: '✕', cancelled: '✕', unavailable: '!', offer: '✋' };
+
+function notifRow(n) {
+  return `
+    <div class="nrow ${n.read_at ? '' : 'unread'} k-${esc(n.kind)}" data-n="${n.id}" role="button" tabindex="0">
+      <span class="nicon" aria-hidden="true">${KIND_ICON[n.kind] || '•'}</span>
+      <div class="info"><b>${esc(n.title)}</b><span>${esc(n.body || '')}</span><small>${timeAgo(n.created_at)}</small></div>
+      ${n.read_at ? '' : '<i class="udot" title="Ongelezen"></i>'}
+    </div>`;
+}
+
+function bindNotifRows(view) {
+  view.querySelectorAll('[data-n]').forEach((row) => row.onclick = () => {
+    const n = state.data.notifications.find((x) => x.id === row.dataset.n);
+    if (!n.read_at) act(() => store.markRead([n.id]));
+    if (n.to_planners && n.date) { state.day = n.date; location.hash = 'planning'; }
+    else if (n.kind !== 'cancelled' && n.kind !== 'withdrawn') location.hash = 'mijn';
+  });
+}
 
 function timeAgo(iso) {
   const min = Math.round((Date.now() - new Date(iso)) / 60000);
@@ -975,21 +1055,11 @@ function meldingen(view) {
     <section class="card day-list">
       <header class="day-head"><h2>Meldingen</h2>
         ${unread.length ? `<button class="btn pill-btn" id="read-all">Alles gelezen</button>` : ''}</header>
-      ${list.map((n) => `
-        <div class="nrow ${n.read_at ? '' : 'unread'} k-${esc(n.kind)}" data-n="${n.id}" role="button" tabindex="0">
-          <span class="nicon" aria-hidden="true">${KIND_ICON[n.kind] || '•'}</span>
-          <div class="info"><b>${esc(n.title)}</b><span>${esc(n.body || '')}</span><small>${timeAgo(n.created_at)}</small></div>
-          ${n.read_at ? '' : '<i class="udot" title="Ongelezen"></i>'}
-        </div>`).join('') || '<p class="muted list-empty">Nog geen meldingen. Hier zie je aanstellingen, wijzigingen en afmeldingen.</p>'}
+      ${list.map(notifRow).join('') || '<p class="muted list-empty">Nog geen meldingen. Hier zie je aanstellingen, wijzigingen en afmeldingen.</p>'}
     </section>`;
   const ra = $('#read-all');
   if (ra) ra.onclick = () => act(() => store.markRead(unread.map((n) => n.id)));
-  view.querySelectorAll('[data-n]').forEach((row) => row.onclick = () => {
-    const n = list.find((x) => x.id === row.dataset.n);
-    if (!n.read_at) act(() => store.markRead([n.id]));
-    if (n.to_planners && n.date) { state.day = n.date; location.hash = 'planning'; }
-    else if (n.kind !== 'cancelled' && n.kind !== 'withdrawn') location.hash = 'mijn';
-  });
+  bindNotifRows(view);
   bindPush();
 }
 

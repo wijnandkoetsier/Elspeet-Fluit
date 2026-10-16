@@ -103,13 +103,14 @@ export function createSupabaseStore(url, key) {
     async signOut() { await sb.auth.signOut(); user = null; emit(); },
     async loadAll() {
       const planner = user?.role === 'planner';
-      const [matches, referees, availability, notifications, plannerIds, syncRuns] = await Promise.all([
+      const [matches, referees, availability, notifications, plannerIds, syncRuns, offers] = await Promise.all([
         sb.from('matches').select('*').order('date').order('time'),
         sb.from('referees').select('*').order('name'),
         sb.from('availability').select('*'),
         sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(100),
         planner ? sb.rpc('planner_referees') : Promise.resolve({ data: [] }),
         planner ? sb.from('sync_runs').select('*').order('at', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
+        sb.from('offers').select('*'),
       ]);
       const plannerSet = new Set(check(plannerIds) || []);
       return {
@@ -118,6 +119,7 @@ export function createSupabaseStore(url, key) {
         availability: check(availability),
         notifications: check(notifications),
         lastSync: (check(syncRuns) || [])[0] || null,
+        offers: check(offers) || [],
       };
     },
     // Ask our own hosting (hosting/sportlink-sync.php) to fetch Sportlink now, as the logged-in planner.
@@ -156,6 +158,12 @@ export function createSupabaseStore(url, key) {
     },
     async deleteAvailability(refereeId, date) {
       check(await sb.from('availability').delete().eq('referee_id', refereeId).eq('date', date));
+    },
+    async addOffer(matchId) {
+      await write(() => sb.from('offers').upsert({ match_id: matchId, referee_id: user.referee_id }, { onConflict: 'match_id,referee_id', ignoreDuplicates: true }));
+    },
+    async removeOffer(matchId) {
+      await write(() => sb.from('offers').delete().eq('match_id', matchId).eq('referee_id', user.referee_id));
     },
     async markRead(ids) {
       if (ids.length) check(await sb.from('notifications').update({ read_at: new Date().toISOString() }).in('id', ids));
