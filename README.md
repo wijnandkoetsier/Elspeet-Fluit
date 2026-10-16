@@ -83,18 +83,14 @@ Voeg scheidsrechters toe bij **Scheidsen** met hun e-mailadres en deel de link n
 - Android: open in Chrome → menu ⋮ → **App installeren**
 
 ### 5. Pushmeldingen (optioneel)
-Meldingen staan altijd in het tabblad **Meldingen**. Voor een melding op het vergrendelscherm:
+Meldingen staan altijd in het tabblad **Meldingen**. Voor een melding op het vergrendelscherm (alles via de Supabase-website, geen extra programma's nodig):
 
-1. Maak een sleutelpaar: `npx web-push generate-vapid-keys`.
+1. **Sleutelpaar maken** (VAPID): op een computer met Node.js `npx web-push generate-vapid-keys`. Je krijgt een *Public Key* en een *Private Key*. De private key is geheim: alleen in Supabase invullen, nooit in de app of op GitHub.
 2. Zet de **Public Key** in `VAPID_PUBLIC_KEY` in [`js/config.js`](js/config.js).
-3. Installeer de [Supabase CLI](https://supabase.com/docs/guides/cli) en voer uit in deze map:
-   ```bash
-   supabase link --project-ref <jouw-project-ref>
-   supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_CONTACT=jouw@email.nl
-   supabase functions deploy send-push
-   ```
-4. Ga in Supabase naar **Database → Webhooks → Create a new hook**: tabel `notifications`, event **Insert**, type **Supabase Edge Functions**, functie `send-push`.
-5. Iedereen kan daarna bij **Meldingen** op **Meldingen aanzetten** tikken. Op de iPhone werkt dit alleen als de app op het beginscherm staat (iOS 16.4 of nieuwer).
+3. Supabase → **Edge Functions → Secrets**: voeg toe `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` en `VAPID_CONTACT` (je e-mailadres).
+4. Supabase → **Edge Functions → Deploy a new function → Via Editor**: naam `send-push`, plak de inhoud van [`supabase/functions/send-push/index.ts`](supabase/functions/send-push/index.ts) en klik **Deploy**.
+5. Supabase → **Database → Webhooks → Create a new hook**: naam `push`, tabel `notifications`, event **Insert**, type **Supabase Edge Functions**, functie `send-push`.
+6. Iedereen kan daarna bij **Meldingen** op **Meldingen aanzetten** tikken. Op de iPhone werkt dit alleen als de app op het beginscherm staat (iOS 16.4 of nieuwer).
 
 ### 6. Sportlink koppelen (via je TransIP-hosting)
 De app haalt de thuiswedstrijden op via een klein PHP-bestand op je eigen hosting. Zo blijft de Sportlink-clientcode geheim. Elk uur worden:

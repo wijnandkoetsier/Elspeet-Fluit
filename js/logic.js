@@ -117,9 +117,25 @@ export function categoryFromTeam(team) {
   const t = String(team || '');
   const m = t.match(/\b[JM]?O\s?(\d{1,2})(?=-|\b|[A-Z])/i);
   if (m) return 'O' + Number(m[1]);
-  if (/\bVR\s?\d|vrouwen|dames/i.test(t)) return 'Vrouwen';
-  if (/(35\+|45\+|vet|VE\d)/i.test(t)) return 'Veteranen';
-  return 'Senioren';
+  if (/30\+/.test(t)) return 'VR30+';
+  if (/\bVR\s?\d|vrouwen|dames/i.test(t)) return 'VR1';
+  if (/45\+/.test(t)) return '45+';
+  if (/35\+|vet|VE\d/i.test(t)) return '35+';
+  if (/7\s?[x×]\s?7/i.test(t)) return '7x7';
+  // "Elspeet 2" or "Elspeet 2 (zon)" → 2e
+  const n = t.match(/(\d+)\s*(?:\([^)]*\))?\s*$/);
+  return (n ? Number(n[1]) : 1) + 'e';
+}
+
+// Categories before the split of seniors and women into teams. Matches get a category from their
+// home team again; preferences become the whole group. Same mapping as the migration in schema.sql.
+const LEGACY_PREFS = { Senioren: ['1e', '2e', '3e', '4e', '5e', '7x7'], Veteranen: ['35+', '45+'], Vrouwen: ['VR1', 'VR30+'] };
+export function upgradeCategory(m) {
+  return LEGACY_PREFS[m.category] ? categoryFromTeam(m.home) : m.category;
+}
+export function upgradePrefs(list) {
+  if (!(list || []).some((c) => LEGACY_PREFS[c])) return list || [];
+  return [...new Set(list.flatMap((c) => LEGACY_PREFS[c] || [c]))];
 }
 
 // Playing time incl. half-time break in minutes (KNVB match lengths). Same table as default_duration() in PHP.
@@ -129,7 +145,8 @@ export function defaultDuration(category) {
     const age = Number(m[1]);
     return age <= 9 ? 45 : age <= 11 ? 55 : age <= 13 ? 65 : age <= 15 ? 75 : age <= 17 ? 85 : 105;
   }
-  return category === 'Veteranen' ? 80 : 105;
+  if (category === '7x7') return 60;
+  return ['35+', '45+', 'VR30+'].includes(category) ? 80 : 105;
 }
 
 // "Veld 1-hoofdveld" → "Veld 1". Same rule as clean_field() in hosting/sportlink-sync.php.
@@ -270,7 +287,7 @@ export const GROUP_NAMES = ['Pupillen', 'Junioren', 'Senioren', 'Vrouwen'];
 export function groupOf(category) {
   const n = /^O(\d+)$/.exec(category || '');
   if (n) return +n[1] <= 12 ? 'Pupillen' : 'Junioren';
-  return category === 'Vrouwen' ? 'Vrouwen' : 'Senioren';
+  return /^VR|^Vrouwen$/.test(category || '') ? 'Vrouwen' : 'Senioren';
 }
 
 export function categoryGroups(categories) {
