@@ -207,6 +207,16 @@ function default_duration(string $category): int
     return $category === 'Veteranen' ? 80 : 105;
 }
 
+/** "veld 1-hoofdveld" → "Veld 1". Zelfde regel als fieldName() in js/logic.js. */
+function clean_field(string $field): string
+{
+    $field = trim($field);
+    $short = trim(preg_replace('/\s*[-–]?\s*hoofdveld\b/iu', '', $field));
+    if ($short !== '') $field = $short;
+    if (preg_match('/^veld\b/i', $field)) $field = 'Veld' . substr($field, 4);
+    return $field;
+}
+
 function map_match(array $r, string $club = ''): ?array
 {
     $status = (string) (pick($r, ['status', 'wedstrijdstatus']) ?? '');
@@ -239,8 +249,7 @@ function map_match(array $r, string $club = ''): ?array
     $kind = (string) (pick($r, ['competitiesoort']) ?? '');
     $type = preg_match('/oefen/i', $kind) ? 'Oefen' : (preg_match('/beker/i', $kind) ? 'Beker' : '');
 
-    $field = pick($r, ['veld', 'veldnaam', 'accommodatieveld']);
-    if ($field && preg_match('/^veld\b/i', $field)) $field = 'Veld' . substr($field, 4);
+    $field = clean_field(pick($r, ['veld', 'veldnaam', 'accommodatieveld']) ?? '');
     $category = category_from_team($home);
 
     return [
