@@ -22,6 +22,15 @@
 </head>
 <body>
   <div id="splash" class="splash" aria-label="Elspeet Fluit wordt geladen"><img src="icons/logo.png" alt=""><span class="ball" aria-hidden="true">⚽</span></div>
+  <script>
+    // Only when the app is opened, not when a page is refreshed (also not after a refresh within the same visit).
+    (function () {
+      var reload = false, seen = false;
+      try { reload = (performance.getEntriesByType('navigation')[0] || {}).type === 'reload'; } catch (e) {}
+      try { seen = sessionStorage.getItem('splash-seen') === '1'; sessionStorage.setItem('splash-seen', '1'); } catch (e) {}
+      if (reload || seen) document.getElementById('splash').remove();
+    })();
+  </script>
   <header class="topbar">
     <div class="brand"><img src="icons/logo.png" alt="Logo VV Elspeet"><div><b id="app-name">Elspeet Fluit</b><small id="club"></small></div></div>
     <span id="demo-badge" class="tag demo" hidden>demo</span>
