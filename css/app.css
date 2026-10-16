@@ -440,3 +440,8 @@ button.mrow.menu.failed .sub { color: var(--red); }
 /* Keuze van agenda */
 .cal-options { margin: 12px 0 0; }
 a.mrow.menu { color: inherit; }
+
+/* Aanstellingen van een scheidsrechter (Scheidsen → naam) */
+.ref-assignments { margin: 12px 0 4px; }
+.ref-match .t small { display: block; font-weight: 500; font-size: .72rem; color: var(--muted); }
+.ref-match .t { line-height: 1.2; }

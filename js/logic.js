@@ -129,6 +129,13 @@ export function defaultDuration(category) {
   return category === 'Veteranen' ? 80 : 105;
 }
 
+// "Veld 1-hoofdveld" → "Veld 1". Same rule as clean_field() in hosting/sportlink-sync.php.
+export function fieldName(field) {
+  const s = String(field || '').trim();
+  const short = s.replace(/\s*[-–]?\s*hoofdveld\b/i, '').trim() || s;
+  return short.replace(/^veld\b/i, 'Veld');
+}
+
 // Minimal CSV parser (handles quotes, ; or , separators).
 export function parseCSV(text) {
   const firstLine = text.split(/\r?\n/)[0] || '';

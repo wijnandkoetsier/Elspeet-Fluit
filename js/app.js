@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, SPORTLINK_SYNC_URL, 
 import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
-  assignmentIssue, defaultDuration,
+  assignmentIssue, defaultDuration, fieldName,
 } from './logic.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -52,7 +52,11 @@ async function boot() {
 
 async function refresh() {
   if (store.user) {
-    try { state.data = await store.loadAll(); } catch (e) { toast('Laden mislukt: ' + e.message, true); }
+    try {
+      state.data = await store.loadAll();
+      // Show fields the short way everywhere ("Veld 1-hoofdveld" → "Veld 1").
+      state.data.matches.forEach((m) => { if (m.field) m.field = fieldName(m.field); });
+    } catch (e) { toast('Laden mislukt: ' + e.message, true); }
   }
   render();
 }
@@ -645,9 +649,38 @@ function scheidsrechters(view) {
 
 const initials = (n) => n.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
+// Upcoming assignments of one referee (shown when a planner opens that referee).
+function refAssignments(r) {
+  const today = todayISO();
+  const { start, end } = seasonOf(today);
+  const mine = state.data.matches.filter((m) => m.referee_id === r.id);
+  const upcoming = mine.filter((m) => m.date >= today).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const past = mine.filter((m) => m.date < today && m.date >= start && m.date <= end).length;
+  const rows = upcoming.map((m) => {
+    const status = m.referee_from_sportlink ? 'via Sportlink' : m.published ? 'gepubliceerd' : 'concept';
+    const issue = assignmentIssue(m, state.data);
+    return `
+      <button class="mrow menu ref-match" data-goto="${m.date}">
+        <div class="t">${esc(m.time)}<small>${esc(fmtDate(m.date))}</small></div>
+        <div class="info"><div class="teams"><span class="home">${team(m.home)}</span>${m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
+          <div class="sub">${[m.field, m.category].filter(Boolean).map(esc).join('<span class="sep">·</span>')}<span class="sep">·</span>
+            <span class="st ${issue ? 'issue' : m.published ? 'pub' : 'concept'}">${status}</span>${issue ? `<span class="issue-text">${ICONS.warn}${esc(issue.join(', '))}</span>` : ''}</div></div>
+        <span class="chev" aria-hidden="true">›</span>
+      </button>`;
+  }).join('');
+  return `
+    <div class="card day-list ref-assignments">
+      <header class="day-head"><h2>Aangesteld</h2><span class="pills"><span class="pill ${upcoming.length ? 'done' : ''}">${upcoming.length} komend</span></span></header>
+      ${rows || '<p class="muted list-empty">Geen komende aanstellingen.</p>'}
+      ${past ? `<p class="muted list-empty">Dit seizoen al ${past} keer gefloten.</p>` : ''}
+    </div>`;
+}
+
 function refForm(r) {
   sheet(`
-    <h3>${r.id ? 'Scheidsrechter bewerken' : 'Nieuwe scheidsrechter'}</h3>
+    <h3>${r.id ? esc(r.name) : 'Nieuwe scheidsrechter'}</h3>
+    ${r.id ? refAssignments(r) : ''}
+    ${r.id ? '<h4 class="sheet-sub">Gegevens</h4>' : ''}
     <form id="rf" class="form">
       <label>Naam<input name="name" required value="${esc(r.name)}"></label>
       <label>E-mail <small class="muted">(nodig om in te loggen)</small><input type="email" name="email" value="${esc(r.email)}"></label>
@@ -671,6 +704,8 @@ function refForm(r) {
     };
     const del = $('#del', el);
     if (del) del.onclick = async () => { if (await ask(`${r.name} verwijderen?`, 'Verwijderen')) { close(); act(() => store.deleteReferee(r.id), 'Verwijderd'); } };
+    // Tap an assignment → open that day in the planning.
+    el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { close(); state.day = b.dataset.goto; location.hash = 'planning'; render(); });
   });
 }
 
