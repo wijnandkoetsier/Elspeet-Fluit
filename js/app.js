@@ -156,13 +156,14 @@ function loginView() {
           <input name="token" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" class="code-input" aria-label="Code">
           <button class="btn primary block">Inloggen</button>
         </form>
+        <p class="muted">Staat er geen code in de mail, maar alleen een link? Tik dan op de link in de mail, het liefst op dit toestel.</p>
         <button class="btn ghost block" id="code-back">Ander e-mailadres of nieuwe code</button>
       </section>`;
   }
   return `
     <section class="card login">
       <h2>Inloggen</h2>
-      <p>Vul het e-mailadres in dat bij de club bekend is. Je krijgt een code van 6 cijfers, zonder wachtwoord.</p>
+      <p>Vul het e-mailadres in dat bij de club bekend is. Je krijgt een e-mail om in te loggen, zonder wachtwoord.</p>
       <form id="login-form">
         <input type="email" name="email" required placeholder="naam@voorbeeld.nl" autocomplete="email" value="${esc(l?.email || '')}" aria-label="E-mailadres">
         <button class="btn primary block">Stuur code</button>
