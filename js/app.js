@@ -19,11 +19,12 @@ const TEXT_SIZES = [['klein', 'Klein', 14], ['normaal', 'Normaal', 16], ['groot'
 const SIZE_KEY = 'scheidsapp-tekstgrootte';
 
 function getTextSize() {
-  try { return localStorage.getItem(SIZE_KEY) || 'normaal'; } catch { return 'normaal'; }
+  // Default is the smallest size; users can pick a bigger one under Instellingen.
+  try { return localStorage.getItem(SIZE_KEY) || 'klein'; } catch { return 'klein'; }
 }
 
 function applyTextSize(key = getTextSize()) {
-  const size = (TEXT_SIZES.find(([k]) => k === key) || TEXT_SIZES[1])[2];
+  const size = (TEXT_SIZES.find(([k]) => k === key) || TEXT_SIZES[0])[2];
   document.documentElement.style.fontSize = size + 'px';
 }
 
