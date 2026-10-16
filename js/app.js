@@ -3,6 +3,7 @@ import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
   assignmentIssue, defaultDuration, fieldName, overlaps,
+  categoryGroups, prefState, togglePrefGroup, togglePrefTeam, prefLabel,
 } from './logic.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -12,7 +13,7 @@ const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short' })
   new Date(d + 'T12:00:00').toLocaleDateString('nl-NL', opts);
 
 let store;
-const state = { data: { matches: [], referees: [], availability: [], notifications: [], offers: [] }, day: null, installPrompt: null, login: null };
+const state = { data: { matches: [], referees: [], availability: [], notifications: [], offers: [] }, day: null, installPrompt: null, login: null, showAllOpen: false };
 
 // ---------- Tekstgrootte (per toestel) ----------
 const TEXT_SIZES = [['klein', 'Klein', 14], ['normaal', 'Normaal', 16], ['groot', 'Groot', 18], ['extra', 'Extra groot', 20]];
@@ -47,7 +48,19 @@ async function boot() {
   try { await store.init(); } catch (e) { toast(e.message, true); }
   store.onChange(refresh);
   window.addEventListener('hashchange', render);
-  await refresh();
+  await refresh().catch(() => {});
+  hideSplash();
+}
+
+// Start screen: logo with a spinning ball, at least 3 seconds after the app was opened.
+const SPLASH_MS = 3000;
+function hideSplash() {
+  const el = $('#splash');
+  if (!el) return;
+  setTimeout(() => {
+    el.classList.add('gone');
+    setTimeout(() => el.remove(), 400);
+  }, Math.max(0, SPLASH_MS - performance.now()));
 }
 
 async function refresh() {
@@ -640,7 +653,7 @@ function scheidsrechters(view) {
         <article class="card ref tap ${r.active === false ? 'dim' : ''}" data-edit="${r.id}">
           <div class="avatar">${esc(initials(r.name))}</div>
           <div class="body"><b>${esc(r.name)}</b>
-            <div class="meta">${r.is_planner ? '<span class="label">Planner</span> ' : ''}${r.sportlink_name ? '<span class="label type">Uit Sportlink</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length ? ' · graag ' + esc(r.pref_categories.join(', ')) : ''}</div></div>
+            <div class="meta">${r.is_planner ? '<span class="label">Planner</span> ' : ''}${r.sportlink_name ? '<span class="label type">Uit Sportlink</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length ? ' · graag ' + esc(prefLabel(r.pref_categories, CATEGORIES)) : ''}</div></div>
           <div class="count">${counts[r.id] || 0}<small>${season}</small></div>
         </article>`).join('') || '<section class="card empty"><p>Nog geen scheidsrechters.</p></section>'}
     </div>
@@ -739,7 +752,15 @@ function overzicht(view) {
   const until = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`;
   const mine = matches.filter((m) => m.referee_id === me && m.published && m.date >= today).sort(byTime);
   const myDay = matches.filter((m) => m.referee_id === me && m.date >= today);
-  const open = matches.filter((m) => !m.referee_id && !m.external_ref && m.date >= today && m.date <= until).sort(byTime);
+  const allOpen = matches.filter((m) => !m.referee_id && !m.external_ref && m.date >= today && m.date <= until).sort(byTime);
+  // Only what this referee likes to whistle ("Wat fluit je graag?" in Instellingen), unless they ask for all.
+  const prefs = state.data.referees.find((r) => r.id === me)?.pref_categories || [];
+  const filtered = prefs.length > 0 && !state.showAllOpen;
+  const open = filtered ? allOpen.filter((m) => prefs.includes(m.category)) : allOpen;
+  const hiddenCount = allOpen.length - open.length;
+  const filterNote = !prefs.length ? ''
+    : filtered ? `<p class="muted list-intro filter-note">Alleen wat je graag fluit: <b>${esc(prefLabel(prefs, CATEGORIES))}</b>. <a href="#profiel">Aanpassen</a>${hiddenCount ? ` · <button class="linkish" id="show-all-open">Toon alle ${allOpen.length}</button>` : ''}</p>`
+    : `<p class="muted list-intro filter-note">Alle open wedstrijden. <button class="linkish" id="show-pref-open">Alleen wat ik graag fluit</button></p>`;
   const todo = availabilityDates(matches).filter((d) => !state.data.availability.some((a) => a.referee_id === me && a.date === d));
   const latest = notifications.slice(0, 3);
   const unread = notifications.filter((n) => !n.read_at).length;
@@ -768,11 +789,14 @@ function overzicht(view) {
       (latest.map(notifRow).join('') || '<p class="muted list-empty">Nog geen meldingen.</p>')
       + (notifications.length ? `<a class="link-row pad-row" href="#meldingen"><span>Alle meldingen</span>${ICONS.arrow}</a>` : ''))}
     ${dayList('Open wedstrijden', `<span class="pill ${open.length ? 'open' : ''}">${open.length} zonder scheids</span>`,
-      (openRows ? `<p class="muted list-intro">Nog geen scheidsrechter voor de komende ${OPEN_DAYS_AHEAD / 7} weken. Tik op <b>Ik kan fluiten</b>, dan krijgt de planner bericht.</p>${openRows}`
-        : '<p class="muted list-empty">Alle wedstrijden van de komende weken hebben een scheidsrechter.</p>'))}`;
+      filterNote + (openRows ? `<p class="muted list-intro">Nog geen scheidsrechter voor de komende ${OPEN_DAYS_AHEAD / 7} weken. Tik op <b>Ik kan fluiten</b>, dan krijgt de planner bericht.</p>${openRows}`
+        : `<p class="muted list-empty">${hiddenCount ? 'Geen open wedstrijden in wat je graag fluit.' : 'Alle wedstrijden van de komende weken hebben een scheidsrechter.'}</p>`))}`;
 
   view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () => calendarSheet(matches.find((x) => x.id === b.dataset.ics)));
   bindNotifRows(view);
+  const showAll = $('#show-all-open'), showPref = $('#show-pref-open');
+  if (showAll) showAll.onclick = () => { state.showAllOpen = true; render(); };
+  if (showPref) showPref.onclick = () => { state.showAllOpen = false; render(); };
   view.querySelectorAll('[data-offer]').forEach((b) => b.onclick = () => {
     b.disabled = true;
     act(() => store.addOffer(b.dataset.offer), 'Doorgegeven: de planner weet dat je kunt fluiten.');
@@ -955,6 +979,7 @@ function saveAv(row) {
 function profiel(view) {
   const u = store.user;
   const ref = state.data.referees.find((r) => r.id === u.referee_id);
+  const pst = prefState(ref?.pref_categories, CATEGORIES);
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   view.innerHTML = `
@@ -975,13 +1000,16 @@ function profiel(view) {
       <p class="size-preview">Zo ziet de tekst eruit. De keuze geldt alleen voor dit toestel.</p>
     </section>
     ${ref ? `
-    <section class="card">
+    <section class="card prefs">
       <h3>Wat fluit je graag?</h3>
-      <p class="muted">Tik om te wisselen: <span class="tag pub">graag</span> <span class="tag avoid">liever niet</span>. De planner houdt hier rekening mee.</p>
-      <div class="chips wrap">${CATEGORIES.map((c) => {
-        const s = (ref.pref_categories || []).includes(c) ? 'like' : (ref.avoid_categories || []).includes(c) ? 'avoid' : '';
-        return `<button class="chip ${s}" data-cat="${c}">${c}</button>`;
-      }).join('')}</div>
+      <p class="muted">Kies eerst een groep. Wil je alleen bepaalde teams, tik die dan ook aan. Laat je de teams open, dan geldt de hele groep. Je ziet bij <b>Open wedstrijden</b> dan alleen deze wedstrijden.</p>
+      <div class="chips wrap">${categoryGroups(CATEGORIES).map(([g]) =>
+        `<button class="chip group ${pst[g].on ? 'like' : ''}" data-group="${g}" aria-pressed="${pst[g].on}">${g}</button>`).join('')}</div>
+      ${categoryGroups(CATEGORIES).filter(([, cs]) => cs.length > 1).map(([g, cs]) => `
+        <div class="pref-teams ${pst[g].on ? '' : 'off'}">
+          <small>${g}${pst[g].on && !pst[g].teams.length ? ' · alle teams' : ''}</small>
+          <div class="chips wrap">${cs.map((c) => `<button class="chip ${pst[g].teams.includes(c) ? 'on' : ''}" data-cat="${c}" aria-pressed="${pst[g].teams.includes(c)}">${c}</button>`).join('')}</div>
+        </div>`).join('')}
     </section>` : ''}
     ${standalone ? '' : `
     <section class="card">
@@ -998,14 +1026,13 @@ function profiel(view) {
     </section>`;
   view.querySelectorAll('[data-size]').forEach((b) => b.onclick = () => { setTextSize(b.dataset.size); render(); });
   $('#pf').onsubmit = (e) => { e.preventDefault(); act(() => store.updateProfile({ name: new FormData(e.target).get('name').trim() }), 'Opgeslagen'); };
-  view.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => {
-    const c = b.dataset.cat;
-    const like = new Set(ref.pref_categories || []), avoid = new Set(ref.avoid_categories || []);
-    if (like.has(c)) { like.delete(c); avoid.add(c); } else if (avoid.has(c)) avoid.delete(c); else like.add(c);
-    ref.pref_categories = [...like]; ref.avoid_categories = [...avoid];
+  const savePrefs = (prefs) => {
+    ref.pref_categories = prefs; ref.avoid_categories = [];
     render();
-    act(() => store.saveReferee({ id: ref.id, pref_categories: ref.pref_categories, avoid_categories: ref.avoid_categories }));
-  });
+    act(() => store.saveReferee({ id: ref.id, pref_categories: ref.pref_categories, avoid_categories: [] }));
+  };
+  view.querySelectorAll('[data-group]').forEach((b) => b.onclick = () => savePrefs(togglePrefGroup(ref.pref_categories, b.dataset.group, CATEGORIES)));
+  view.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => savePrefs(togglePrefTeam(ref.pref_categories, b.dataset.cat, CATEGORIES)));
   const inst = $('#install');
   if (inst) inst.onclick = async () => { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; render(); };
   $('#logout').onclick = () => act(() => store.signOut());

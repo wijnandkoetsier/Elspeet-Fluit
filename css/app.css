@@ -457,3 +457,23 @@ a.mrow.menu { color: inherit; }
 .offer-text { flex-basis: 100%; font-size: .82rem; font-weight: 600; color: var(--brand); }
 .k-offer .nicon { background: var(--brand-soft); color: var(--brand); }
 .cand .who small { overflow-wrap: anywhere; }
+
+/* Wat fluit je graag: groups first, teams per group underneath */
+.prefs .chip.group { font-size: .95rem; padding: 10px 16px; }
+.pref-teams { margin-top: 14px; }
+.pref-teams small { display: block; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+.pref-teams.off .chip:not(.on) { opacity: .6; }
+.linkish { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: var(--brand); font-weight: 600; text-decoration: underline; cursor: pointer; }
+.filter-note a { color: var(--brand); font-weight: 600; }
+
+/* Start screen: same white background as the phone's own splash, logo with a spinning ball */
+.splash {
+  position: fixed; inset: 0; z-index: 100; background: #ffffff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+  transition: opacity .35s ease;
+}
+.splash.gone { opacity: 0; pointer-events: none; }
+.splash img { width: 160px; height: auto; }
+.splash .ball { font-size: 40px; line-height: 1; animation: ball-spin 1s linear infinite; }
+@keyframes ball-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .splash .ball { animation-duration: 3s; } }

@@ -261,3 +261,58 @@ export function assignmentIssue(m, data) {
   if (!c) return ['Niet meer actief'];
   return c.status === 'no' ? c.reasons.filter((r) => !/graag|liever/i.test(r)) : null;
 }
+
+// ---------- Voorkeuren: groepen en teams ----------
+// "Wat fluit je graag?" is stored as the full list of categories (pref_categories), so candidates()
+// keeps working. Choosing a group means all its categories; choosing teams narrows the group down.
+export const GROUP_NAMES = ['Pupillen', 'Junioren', 'Senioren', 'Vrouwen'];
+
+export function groupOf(category) {
+  const n = /^O(\d+)$/.exec(category || '');
+  if (n) return +n[1] <= 12 ? 'Pupillen' : 'Junioren';
+  return category === 'Vrouwen' ? 'Vrouwen' : 'Senioren';
+}
+
+export function categoryGroups(categories) {
+  return GROUP_NAMES.map((g) => [g, categories.filter((c) => groupOf(c) === g)]).filter(([, cs]) => cs.length);
+}
+
+// What the picker shows: a group is on when any of its categories is chosen; teams are only
+// marked when the group is narrowed down (all of them chosen reads as "the whole group").
+export function prefState(prefs, categories) {
+  const set = new Set(prefs || []);
+  return Object.fromEntries(categoryGroups(categories).map(([g, cs]) => {
+    const chosen = cs.filter((c) => set.has(c));
+    return [g, { on: chosen.length > 0, teams: chosen.length === cs.length ? [] : chosen }];
+  }));
+}
+
+export function togglePrefGroup(prefs, group, categories) {
+  const cs = categories.filter((c) => groupOf(c) === group);
+  const set = new Set(prefs || []);
+  const on = cs.some((c) => set.has(c));
+  cs.forEach((c) => (on ? set.delete(c) : set.add(c)));
+  return categories.filter((c) => set.has(c));
+}
+
+// Tapping a team: the first team narrows the whole group down to that team; removing the last
+// chosen team goes back to the whole group (the group itself is switched off with its own chip).
+export function togglePrefTeam(prefs, team, categories) {
+  const g = groupOf(team);
+  const cs = categories.filter((c) => groupOf(c) === g);
+  const set = new Set(prefs || []);
+  const chosen = cs.filter((c) => set.has(c));
+  if (chosen.length === 0 || chosen.length === cs.length) {
+    cs.forEach((c) => set.delete(c)); set.add(team);
+  } else if (set.has(team)) {
+    set.delete(team);
+    if (chosen.length === 1) cs.forEach((c) => set.add(c));
+  } else set.add(team);
+  return categories.filter((c) => set.has(c));
+}
+
+// Short text for a preference list, e.g. "Pupillen, O15, O17".
+export function prefLabel(prefs, categories) {
+  const st = prefState(prefs, categories);
+  return Object.entries(st).filter(([, s]) => s.on).map(([g, s]) => (s.teams.length ? s.teams.join(', ') : g)).join(', ');
+}
