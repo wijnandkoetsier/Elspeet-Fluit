@@ -1014,6 +1014,8 @@ function voorkeuren(view) {
 }
 
 function profiel(view) {
+  // Planners find "Wat fluit je graag?" on Overzicht; referees here in Instellingen.
+  const isPlannerUser = store.user.role === 'planner';
   const u = store.user;
   const ref = state.data.referees.find((r) => r.id === u.referee_id);
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -1035,7 +1037,7 @@ function profiel(view) {
       </div>
       <p class="size-preview">Zo ziet de tekst eruit. De keuze geldt alleen voor dit toestel.</p>
     </section>
-    ${ref ? prefsCard(ref) : ''}
+    ${ref && !isPlannerUser ? prefsCard(ref) : ''}
     ${standalone ? '' : `
     <section class="card">
       <h3>📱 Zet de app op je telefoon</h3>
@@ -1051,7 +1053,7 @@ function profiel(view) {
     </section>`;
   view.querySelectorAll('[data-size]').forEach((b) => b.onclick = () => { setTextSize(b.dataset.size); render(); });
   $('#pf').onsubmit = (e) => { e.preventDefault(); act(() => store.updateProfile({ name: new FormData(e.target).get('name').trim() }), 'Opgeslagen'); };
-  if (ref) bindPrefs(view, ref);
+  if (ref && !isPlannerUser) bindPrefs(view, ref);
   const inst = $('#install');
   if (inst) inst.onclick = async () => { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; render(); };
   $('#logout').onclick = () => act(() => store.signOut());
