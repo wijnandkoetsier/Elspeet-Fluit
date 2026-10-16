@@ -201,6 +201,9 @@ function matchDays() {
   return [...new Set(state.data.matches.map((m) => m.date))].sort();
 }
 
+// Team names keep 'JO12-2' together: a non-breaking hyphen stops the line from wrapping inside it.
+const team = (name) => esc(name).replace(/-/g, '\u2011');
+
 // One compact row in a day list: time | teams + labels / details | action.
 function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) {
   const labels = [m.category && `<span class="label">${esc(m.category)}</span>`, m.external_ref && '<span class="label knvb">KNVB</span>'].filter(Boolean).join('');
@@ -208,8 +211,8 @@ function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) 
     <div class="mrow ${m.external_ref ? 'dim' : ''}" ${attrs}>
       <div class="t">${esc(time)}</div>
       <div class="info">
-        <div class="teams">${esc(m.home)}${m.away ? ` – ${esc(m.away)}` : ''}${labels}</div>
-        <div class="sub">${sub}</div>
+        <div class="teams"><span class="home">${team(m.home)}</span>${m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
+        <div class="sub">${labels}${sub}</div>
       </div>
       ${action}
     </div>`;
@@ -359,15 +362,15 @@ function availRow({ r, a, assigned }, editable = false) {
 function whoCanReferee(day) {
   const g = dayAvailability(day);
   return `
-    <section class="card who">
-      <header class="who-head">
-        <div><h2>Wie kan er fluiten?</h2><p class="muted">${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
-        <span class="who-icon">${ICONS.people}</span>
-      </header>
-      ${g.yes.map(availRow).join('') || '<p class="muted">Nog niemand heeft zich beschikbaar gemeld.</p>'}
-      <button class="link-row" id="all-avail">
-        <span>Alle beschikbaarheid${g.none.length ? ` <small class="pill open">${g.none.length} niets ingevuld</small>` : ''}</span>${ICONS.arrow}
-      </button>
+    <section class="card day-list who">
+      <header class="day-head"><h2>Wie kan er fluiten?</h2>
+        <span class="pills"><span class="pill ${g.yes.length ? 'done' : ''}">${g.yes.length} beschikbaar</span></span></header>
+      <div class="who-body">
+        ${g.yes.map((x) => availRow(x)).join('') || '<p class="muted">Nog niemand heeft zich beschikbaar gemeld.</p>'}
+        <button class="link-row" id="all-avail">
+          <span>Alle beschikbaarheid${g.none.length ? ` <small class="pill open">${g.none.length} niets ingevuld</small>` : ''}</span>${ICONS.arrow}
+        </button>
+      </div>
     </section>`;
 }
 

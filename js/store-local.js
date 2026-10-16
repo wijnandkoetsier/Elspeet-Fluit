@@ -1,11 +1,12 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v2';
+const KEY = 'scheidsapp-demo-v3';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
-  const iso = (d) => d.toISOString().slice(0, 10);
+  // Local calendar date (toISOString would give the UTC date, a day off around midnight).
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const sat = new Date();
   sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7));
   const d1 = iso(sat);

@@ -398,3 +398,18 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 /* Meer-menu */
 a.mrow.menu { text-decoration: none; color: inherit; grid-template-columns: auto minmax(0, 1fr) auto; }
 .micon { width: 40px; height: 40px; border-radius: 10px; background: var(--soft); display: inline-flex; align-items: center; justify-content: center; }
+
+/* Teams onder elkaar: thuis (met labels) boven, tegenstander eronder */
+.mrow .teams .home, .mrow .teams .away { display: block; }
+.mrow .teams .away { font-weight: 500; }
+
+/* Wie kan er fluiten? in hetzelfde blok met grijze kop als de wedstrijden */
+.who-body { padding: 4px 14px 12px; }
+.who-body > .muted { margin: 10px 0; }
+.mrow .sub .label { margin-left: 0; }
+.st { display: inline; }
+.st::before { display: inline-block; margin-right: .35em; vertical-align: .05em; }
+.st small { margin-left: .35em; }
+.pill { white-space: nowrap; }
+.link-row > span { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.link-row small.pill { margin-left: 0; }
