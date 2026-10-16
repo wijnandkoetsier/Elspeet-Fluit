@@ -28,7 +28,11 @@
       var reload = false, seen = false;
       try { reload = (performance.getEntriesByType('navigation')[0] || {}).type === 'reload'; } catch (e) {}
       try { seen = sessionStorage.getItem('splash-seen') === '1'; sessionStorage.setItem('splash-seen', '1'); } catch (e) {}
-      if (reload || seen) document.getElementById('splash').remove();
+      var el = document.getElementById('splash');
+      if (reload || seen) { el.remove(); return; }
+      // Gone 2 seconds after opening (0.3 s fade included), whether or not the app has loaded yet.
+      setTimeout(function () { el.classList.add('gone'); setTimeout(function () { el.remove(); }, 300); },
+        Math.max(0, 1600 - performance.now()));
     })();
   </script>
   <header class="topbar">
