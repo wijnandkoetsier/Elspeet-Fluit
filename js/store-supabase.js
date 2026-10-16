@@ -8,6 +8,10 @@ function friendly(message) {
   }
   if (/token has expired|invalid/i.test(message)) return 'De code klopt niet of is verlopen. Vraag een nieuwe code aan.';
   if (/rate limit|security purposes/i.test(message)) return 'Even wachten: je kunt over een minuut een nieuwe code aanvragen.';
+  // Without custom SMTP, Supabase only mails the members of the Supabase account.
+  if (/not authorized|error sending (magic link|confirmation|otp)/i.test(message)) {
+    return 'Er kan nog geen inlogmail naar dit adres worden gestuurd. Zolang de club nog geen eigen mailserver (SMTP) heeft ingesteld, werkt alleen het e-mailadres waarmee je Supabase-account is aangemaakt.';
+  }
   return message;
 }
 

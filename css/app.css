@@ -30,6 +30,8 @@
 }
 
 * { box-sizing: border-box; }
+/* The hidden attribute must win over component display rules (e.g. .tag is inline-block). */
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   font: 1rem/1.45 var(--font);
