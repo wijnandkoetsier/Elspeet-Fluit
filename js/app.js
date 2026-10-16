@@ -52,8 +52,8 @@ async function boot() {
   hideSplash();
 }
 
-// Start screen: logo with a spinning ball, at least 3 seconds after the app was opened.
-const SPLASH_MS = 3000;
+// Start screen: logo with a spinning ball, at least 2 seconds after the app was opened.
+const SPLASH_MS = 2000;
 function hideSplash() {
   const el = $('#splash');
   if (!el) return;

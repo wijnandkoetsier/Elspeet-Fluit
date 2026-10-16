@@ -1,5 +1,5 @@
 // Service worker: app shell offline beschikbaar. Data komt altijd vers van het netwerk.
-const CACHE = 'scheidsapp-v7';
+const CACHE = 'scheidsapp-v8';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/logic.js', 'js/config.js', 'js/store-local.js', 'js/store-supabase.js',
