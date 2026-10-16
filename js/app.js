@@ -1,8 +1,8 @@
-import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, APP_NAME, CLUB_NAME, CATEGORIES } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, SPORTLINK_SYNC_URL, APP_NAME, CLUB_NAME, CATEGORIES } from './config.js';
 import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
-  assignmentIssue,
+  assignmentIssue, defaultDuration,
 } from './logic.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -485,6 +485,7 @@ function wedstrijden(view) {
   const byDay = {};
   list.forEach((m) => (byDay[m.date] ||= []).push(m));
   view.innerHTML = `
+    ${sportlinkCard()}
     <div class="actions top">
       <button class="btn primary" id="add-match">＋ Wedstrijd</button>
       <button class="btn" id="import">📥 CSV importeren</button>
@@ -494,21 +495,59 @@ function wedstrijden(view) {
       fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' }),
       `<span class="pill">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>`,
       ms.map((m) => matchRow(m, {
-        sub: [m.field, `${m.duration || 90} min`].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
+        sub: [m.field, `${m.duration || 90} min`, m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
         action: '<span class="chev" aria-hidden="true">›</span>',
         attrs: `data-edit="${m.id}" role="button" tabindex="0"`,
       })).join(''),
     )).join('') || '<section class="card empty"><p>Geen komende wedstrijden.</p></section>'}`;
   $('#add-match').onclick = () => matchForm({ date: state.day || today, time: '10:00', duration: 60 });
+  bindSportlink();
   $('#import').onclick = importSheet;
   $('#past').onchange = (e) => { state.showPast = e.target.checked; render(); };
   view.querySelectorAll('[data-edit]').forEach((el) => el.onclick = () =>
     matchForm(state.data.matches.find((m) => m.id === el.dataset.edit)));
 }
 
+// Sportlink: last sync + "fetch now" (cloud: via our own hosting; demo: sample data).
+function sportlinkCard() {
+  const last = state.data.lastSync;
+  const configured = store.mode === 'demo' || SPORTLINK_SYNC_URL;
+  const when = last ? new Date(last.at).toLocaleString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+  const status = !configured
+    ? 'Nog niet gekoppeld. Zie de README, stap Sportlink.'
+    : !last ? 'Nog niet opgehaald.'
+    : last.ok ? `Laatst bijgewerkt ${when}: ${last.added} nieuw, ${last.updated} gewijzigd, ${last.removed} vervallen.`
+    : `Laatste poging mislukt (${when}): ${last.message || 'onbekende fout'}`;
+  return `
+    <section class="card sportlink ${last && !last.ok ? 'failed' : ''}">
+      <div class="sl-head"><b>Sportlink</b>${last?.ok ? '<span class="pill done">Gekoppeld</span>' : ''}</div>
+      <p class="muted">${esc(status)}${store.mode === 'demo' ? ' In de demo haalt de knop voorbeeldwedstrijden op.' : ''}</p>
+      ${configured ? '<button class="btn block" id="sl-sync">Nu ophalen uit Sportlink</button>' : ''}
+    </section>`;
+}
+
+function bindSportlink() {
+  const b = $('#sl-sync');
+  if (!b) return;
+  b.onclick = async () => {
+    b.disabled = true;
+    b.textContent = 'Bezig met ophalen…';
+    try {
+      const r = await store.syncSportlink(SPORTLINK_SYNC_URL);
+      toast(`Sportlink: ${r.added} nieuw, ${r.updated} gewijzigd, ${r.removed} vervallen.`);
+      await refresh();
+    } catch (e) {
+      toast(e.message, true);
+      b.disabled = false;
+      b.textContent = 'Nu ophalen uit Sportlink';
+    }
+  };
+}
+
 function matchForm(m) {
   sheet(`
     <h3>${m.id ? 'Wedstrijd bewerken' : 'Nieuwe wedstrijd'}</h3>
+    ${m.sportlink_code ? '<p class="muted note">Deze wedstrijd komt uit Sportlink. Datum, tijd, teams en veld worden bij elke synchronisatie bijgewerkt vanuit Sportlink; wijzig ze daar.</p>' : ''}
     <form id="mf" class="form">
       <div class="row"><label>Datum<input type="date" name="date" required value="${esc(m.date)}"></label>
         <label>Aanvang<input type="time" name="time" required value="${esc(m.time)}"></label></div>
@@ -531,6 +570,8 @@ function matchForm(m) {
       state.day = row.date;
       act(() => store.saveMatches([row]), 'Opgeslagen');
     };
+    // Picking a category fills in the usual KNVB playing time.
+    $('select[name=category]', el).onchange = (e) => { if (e.target.value) $('input[name=duration]', el).value = defaultDuration(e.target.value); };
     const del = $('#del', el);
     if (del) del.onclick = async () => { if (await ask('Wedstrijd verwijderen?', 'Verwijderen')) { close(); act(() => store.deleteMatch(m.id), 'Verwijderd'); } };
   });

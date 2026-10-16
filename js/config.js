@@ -3,6 +3,10 @@
 export const SUPABASE_URL = '';
 export const SUPABASE_ANON_KEY = '';
 
+// Adres van hosting/sportlink-sync.php op je eigen hosting, voor de knop "Nu ophalen uit Sportlink".
+// Bijvoorbeeld 'https://wijnandkoetsier.nl/elspeet-fluit/sportlink-sync.php'. Leeg = geen knop.
+export const SPORTLINK_SYNC_URL = '';
+
 // Publieke VAPID-sleutel voor pushmeldingen (zie README, stap Pushmeldingen). Leeg = geen push.
 export const VAPID_PUBLIC_KEY = '';
 

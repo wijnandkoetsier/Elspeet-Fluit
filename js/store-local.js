@@ -83,7 +83,7 @@ export function createLocalStore() {
     async loadAll() {
       const me = db.user?.referee_id;
       const notifications = db.notifications.filter((n) => n.referee_id === me || (n.to_planners && isPlanner()));
-      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications };
+      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications, lastSync: db.lastSync || null };
       return {
         matches: [...db.matches],
         referees: db.referees.filter((r) => r.id === me),
@@ -120,6 +120,26 @@ export function createLocalStore() {
       db.availability = db.availability.filter((a) => a.referee_id !== id);
       db.notifications = db.notifications.filter((n) => n.referee_id !== id);
       save();
+    },
+    // Demo: pretend Sportlink returned a few home matches for the Saturday after next.
+    async syncSportlink() {
+      const sat = new Date();
+      sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7) + 14);
+      const d = `${sat.getFullYear()}-${String(sat.getMonth() + 1).padStart(2, '0')}-${String(sat.getDate()).padStart(2, '0')}`;
+      const feed = [
+        ['SL-1001', '08:45', 'Elspeet JO9-1', 'Nunspeet JO9-3', 'Veld 2', 'JO9', 45],
+        ['SL-1002', '10:00', 'Elspeet JO13-1', 'Hulshorst JO13-2', 'Veld 1', 'JO13', 65],
+        ['SL-1003', '11:30', 'Elspeet MO15-1', 'Putten MO15-1', 'Veld 1', 'MO15', 75],
+      ];
+      let added = 0;
+      for (const [code, time, home, away, field, category, duration] of feed) {
+        if (db.matches.some((m) => m.sportlink_code === code)) continue;
+        db.matches.push({ id: uid(), sportlink_code: code, source: 'sportlink', date: d, time, home, away, field, category, duration, referee_id: null, published: false, external_ref: false });
+        added++;
+      }
+      db.lastSync = { at: new Date().toISOString(), ok: true, added, updated: 0, removed: 0, total: feed.length };
+      save();
+      return { ok: true, ...db.lastSync };
     },
     async setPlanner(refereeId, value) {
       const r = db.referees.find((x) => x.id === refereeId);

@@ -62,12 +62,13 @@ export function createSupabaseStore(url, key) {
     async signOut() { await sb.auth.signOut(); user = null; emit(); },
     async loadAll() {
       const planner = user?.role === 'planner';
-      const [matches, referees, availability, notifications, plannerIds] = await Promise.all([
+      const [matches, referees, availability, notifications, plannerIds, syncRuns] = await Promise.all([
         sb.from('matches').select('*').order('date').order('time'),
         sb.from('referees').select('*').order('name'),
         sb.from('availability').select('*'),
         sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(100),
         planner ? sb.rpc('planner_referees') : Promise.resolve({ data: [] }),
+        planner ? sb.from('sync_runs').select('*').order('at', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
       ]);
       const plannerSet = new Set(check(plannerIds) || []);
       return {
@@ -75,7 +76,21 @@ export function createSupabaseStore(url, key) {
         referees: check(referees).map((r) => ({ ...r, is_planner: plannerSet.has(r.id) })),
         availability: check(availability),
         notifications: check(notifications),
+        lastSync: (check(syncRuns) || [])[0] || null,
       };
+    },
+    // Ask our own hosting (hosting/sportlink-sync.php) to fetch Sportlink now, as the logged-in planner.
+    async syncSportlink(url) {
+      const { data } = await sb.auth.getSession();
+      let res;
+      try {
+        res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token}` } });
+      } catch {
+        throw new Error('Kan de Sportlink-koppeling niet bereiken. Klopt SPORTLINK_SYNC_URL en staat het adres van de app in allowed_origins?');
+      }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || `Sportlink ophalen mislukt (${res.status}).`);
+      return body;
     },
     async saveMatches(list) {
       const inserts = list.filter((m) => !m.id);

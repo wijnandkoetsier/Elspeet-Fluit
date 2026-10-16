@@ -413,3 +413,10 @@ a.mrow.menu { text-decoration: none; color: inherit; grid-template-columns: auto
 .pill { white-space: nowrap; }
 .link-row > span { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .link-row small.pill { margin-left: 0; }
+
+/* Sportlink-koppeling */
+.sl-head { display: flex; align-items: center; gap: 8px; }
+.sl-head .pill { margin-left: auto; }
+.card.sportlink p { margin: 6px 0 0; }
+.card.sportlink.failed { box-shadow: inset 4px 0 0 var(--red); }
+.note { background: var(--soft); border-radius: 8px; padding: 8px 10px; }
