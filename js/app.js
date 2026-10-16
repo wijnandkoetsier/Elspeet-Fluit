@@ -702,22 +702,71 @@ function mijn(view) {
       <div class="stats"><div><b>${season.length}</b><span>gefloten</span></div><div><b>${upcoming.length}</b><span>gepland</span></div></div>
       ${Object.keys(perCat).length ? `<p class="muted">${Object.entries(perCat).map(([c, n]) => `${esc(c)}: ${n}`).join(' · ')}</p>` : ''}
     </section>`;
-  view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () => {
-    const m = state.data.matches.find((x) => x.id === b.dataset.ics);
-    download(`wedstrijd-${m.date}.ics`, ics(m), 'text/calendar');
+  view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () =>
+    calendarSheet(state.data.matches.find((x) => x.id === b.dataset.ics)));
+}
+
+// Times for a calendar entry: be there 30 minutes before kick-off, until the end of the match.
+function calendarTimes(m) {
+  const start = Math.max(0, toMin(m.time) - 30);
+  const end = Math.min(1439, matchEnd(m));
+  const stamp = (min) => `${m.date.replace(/-/g, '')}T${fromMin(min).replace(':', '')}00`;
+  return { start, end, stamp };
+}
+
+const calendarTitle = (m) => `Fluiten: ${m.home}${m.away ? ' - ' + m.away : ''}`;
+const calendarPlace = (m) => `${CLUB_NAME}${m.field ? ', ' + m.field : ''}`;
+const calendarNote = (m) => `Aanvang ${m.time} (30 min van tevoren aanwezig)`;
+
+// Let the referee pick their calendar: Google and Outlook open a filled-in "new event" screen,
+// the file works for Apple Calendar and others (on Android a file only lands in Downloads).
+function calendarSheet(m) {
+  const { start, end, stamp } = calendarTimes(m);
+  const google = 'https://calendar.google.com/calendar/render?' + new URLSearchParams({
+    action: 'TEMPLATE', text: calendarTitle(m), dates: `${stamp(start)}/${stamp(end)}`,
+    ctz: 'Europe/Amsterdam', location: calendarPlace(m), details: calendarNote(m),
+  });
+  const iso = (min) => `${m.date}T${fromMin(min)}:00`;
+  const outlook = 'https://outlook.live.com/calendar/0/deeplink/compose?' + new URLSearchParams({
+    path: '/calendar/action/compose', rru: 'addevent', subject: calendarTitle(m),
+    startdt: iso(start), enddt: iso(end), location: calendarPlace(m), body: calendarNote(m),
+  });
+  const isApple = /iphone|ipad|ipod|macintosh/i.test(navigator.userAgent);
+  const fileRow = `<button class="mrow menu" id="cal-file"><span class="micon">${ICONS.calendar}</span>
+      <div class="info"><b>Apple Agenda of andere agenda</b><div class="sub">${isApple ? 'Opent "Voeg toe aan agenda"' : 'Download een agendabestand (.ics) en open het'}</div></div><span class="chev" aria-hidden="true">›</span></button>`;
+  const link = (href, title, sub) => `<a class="mrow menu" href="${href}" target="_blank" rel="noopener"><span class="micon">${ICONS.date}</span>
+      <div class="info"><b>${title}</b><div class="sub">${sub}</div></div><span class="chev" aria-hidden="true">›</span></a>`;
+  sheet(`
+    <h3>Zet in je agenda</h3>
+    <p class="muted">${esc(fmtDate(m.date, { weekday: 'long', day: 'numeric', month: 'long' }))} · ${esc(fromMin(start))}–${esc(fromMin(end))} · ${esc(m.home)}</p>
+    <div class="card day-list cal-options">
+      ${isApple ? fileRow : ''}
+      ${link(esc(google), 'Google Agenda', 'Opent een nieuwe afspraak, alles al ingevuld')}
+      ${link(esc(outlook), 'Outlook', 'Opent een nieuwe afspraak in Outlook')}
+      ${isApple ? '' : fileRow}
+    </div>`, (el, close) => {
+    $('#cal-file', el).onclick = () => { download(`wedstrijd-${m.date}.ics`, ics(m), 'text/calendar'); close(); };
+    el.querySelectorAll('a.mrow').forEach((a) => a.addEventListener('click', () => setTimeout(close, 300)));
   });
 }
 
 function ics(m) {
-  const dt = (date, min) => `${date.replace(/-/g, '')}T${fromMin(min).replace(':', '')}00`;
+  const { start, end, stamp } = calendarTimes(m);
+  // Escape text per RFC 5545 and include the Amsterdam time zone so every calendar shows the right time.
+  const text = (v) => String(v).replace(/[\;,]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
   return [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${APP_NAME}//NL`, 'BEGIN:VEVENT',
-    `UID:${m.id}@scheidsapp`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-    `DTSTART;TZID=Europe/Amsterdam:${dt(m.date, Math.max(0, toMin(m.time) - 30))}`,
-    `DTEND;TZID=Europe/Amsterdam:${dt(m.date, Math.min(1439, matchEnd(m)))}`,
-    `SUMMARY:Fluiten: ${m.home}${m.away ? ' - ' + m.away : ''}`,
-    `LOCATION:${CLUB_NAME}${m.field ? ', ' + m.field : ''}`,
-    `DESCRIPTION:Aanvang ${m.time} (30 min van tevoren aanwezig)`,
+    'BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${APP_NAME}//NL`, 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VTIMEZONE', 'TZID:Europe/Amsterdam',
+    'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
+    'BEGIN:STANDARD', 'TZOFFSETFROM:+0200', 'TZOFFSETTO:+0100', 'TZNAME:CET', 'DTSTART:19701025T030000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD',
+    'END:VTIMEZONE',
+    'BEGIN:VEVENT',
+    `UID:${m.id}@elspeet-fluit`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+    `DTSTART;TZID=Europe/Amsterdam:${stamp(start)}`,
+    `DTEND;TZID=Europe/Amsterdam:${stamp(end)}`,
+    `SUMMARY:${text(calendarTitle(m))}`,
+    `LOCATION:${text(calendarPlace(m))}`,
+    `DESCRIPTION:${text(calendarNote(m))}`,
     'END:VEVENT', 'END:VCALENDAR',
   ].join('\r\n');
 }
