@@ -9,7 +9,14 @@ function friendly(message, context = 'db') {
       return 'Dit e-mailadres is niet bekend bij de club. Vraag de planner om je toe te voegen.';
     }
     if (/token has expired|otp.*(expired|invalid)|invalid.*(otp|token)/i.test(message)) return 'De code klopt niet of is verlopen. Vraag een nieuwe code aan.';
-    if (/rate limit|security purposes/i.test(message)) return 'Even wachten: je kunt over een minuut een nieuwe code aanvragen.';
+    // Two different Supabase limits: one request per ~60 s per address, and (without own SMTP)
+    // only a few e-mails per hour for the whole project.
+    const secs = message.match(/after (\d+) seconds?/i);
+    if (secs) return `Even wachten: je kunt over ${secs[1]} seconden een nieuwe code aanvragen.`;
+    if (/email rate limit|over_email_send_rate_limit/i.test(message)) {
+      return 'Er zijn het afgelopen uur te veel inlogmails verstuurd. Zonder eigen mailserver verstuurt Supabase maar een paar mails per uur. Gebruik de link of code uit de laatste mail die je kreeg (die werkt een uur), of probeer het over een uur opnieuw.';
+    }
+    if (/rate limit|too many|security purposes/i.test(message)) return 'Te veel pogingen achter elkaar. Wacht even en probeer het dan opnieuw.';
     // Without custom SMTP, Supabase only mails the members of the Supabase account.
     if (/not authorized|error sending (magic link|confirmation|otp)/i.test(message)) {
       return 'Er kan nog geen inlogmail naar dit adres worden gestuurd. Zolang de club nog geen eigen mailserver (SMTP) heeft ingesteld, werkt alleen het e-mailadres waarmee je Supabase-account is aangemaakt.';
