@@ -108,17 +108,20 @@ export function availabilityDates(matches, today = new Date(), weeks = 4) {
   return [...set].sort();
 }
 
-// Category from a team name: "Elspeet JO11-1" → JO11, "Elspeet 35+1" → Veteranen. Same rules as hosting/sportlink-sync.php.
+// Category from a team name in KNVB naming: "Elspeet O13-1JM" → O13, old "JO11-1" → O11, "VR1" → Vrouwen.
+// Same rules as category_from_team() in hosting/sportlink-sync.php.
 export function categoryFromTeam(team) {
-  const m = String(team || '').match(/\b([JM]O)\s?(\d{1,2})\b/i);
-  if (m) return m[1].toUpperCase() + m[2];
-  if (/(35\+|45\+|vet|VE\d)/i.test(team || '')) return 'Veteranen';
+  const t = String(team || '');
+  const m = t.match(/\b[JM]?O\s?(\d{1,2})(?=-|\b|[A-Z])/i);
+  if (m) return 'O' + Number(m[1]);
+  if (/\bVR\s?\d|vrouwen|dames/i.test(t)) return 'Vrouwen';
+  if (/(35\+|45\+|vet|VE\d)/i.test(t)) return 'Veteranen';
   return 'Senioren';
 }
 
 // Playing time incl. half-time break in minutes (KNVB match lengths). Same table as default_duration() in PHP.
 export function defaultDuration(category) {
-  const m = String(category || '').match(/^[JM]O(\d{1,2})$/);
+  const m = String(category || '').match(/^[JM]?O(\d{1,2})$/);
   if (m) {
     const age = Number(m[1]);
     return age <= 9 ? 45 : age <= 11 ? 55 : age <= 13 ? 65 : age <= 15 ? 75 : age <= 17 ? 85 : 105;

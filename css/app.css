@@ -422,3 +422,7 @@ a.mrow.menu { text-decoration: none; color: inherit; grid-template-columns: auto
 .card.sportlink p { margin: 6px 0 0; }
 .card.sportlink.failed { box-shadow: inset 4px 0 0 var(--red); }
 .note { background: var(--soft); border-radius: 8px; padding: 8px 10px; }
+
+/* Sportlink: soort wedstrijd en scheidsrechter volgens Sportlink */
+.label.type { color: var(--text); background: var(--accent-soft); box-shadow: none; }
+.sl-ref { flex-basis: 100%; font-size: .8rem; color: var(--muted); }
