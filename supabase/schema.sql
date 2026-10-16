@@ -49,6 +49,10 @@ alter table public.matches add column if not exists sportlink_referee text;   --
 alter table public.matches add column if not exists referee_from_sportlink boolean not null default false;
 -- Scheidsrechters die uit Sportlink zijn overgenomen worden herkend aan hun naam in Sportlink.
 alter table public.referees add column if not exists sportlink_name text;
+-- Rol: is_referee = kan worden ingepland (uit = alleen planner). invite_planner = wordt planner bij
+-- de eerste keer inloggen (en blijft gelijk met de rol daarna).
+alter table public.referees add column if not exists is_referee boolean not null default true;
+alter table public.referees add column if not exists invite_planner boolean not null default false;
 
 -- Logboek van de Sportlink-synchronisatie (laatste run zichtbaar voor planners).
 create table if not exists public.sync_runs (
@@ -136,7 +140,8 @@ begin
   if ref.id is null then
     raise exception 'Dit e-mailadres is niet bekend bij de club. Vraag de planner om je toe te voegen.';
   end if;
-  insert into profiles (id, email, name) values (new.id, new.email, ref.name)
+  insert into profiles (id, email, name, role)
+  values (new.id, new.email, ref.name, case when ref.invite_planner then 'planner' else 'referee' end)
   on conflict (id) do nothing;
   update referees set user_id = new.id where id = ref.id;
   return new;
@@ -155,6 +160,8 @@ begin
     new.user_id := old.user_id;
     new.email := old.email;
     new.active := old.active;
+    new.is_referee := old.is_referee;
+    new.invite_planner := old.invite_planner;
   end if;
   return new;
 end $$;
@@ -174,16 +181,18 @@ create trigger profiles_guard before update on public.profiles
   for each row execute function public.guard_profile_update();
 
 -- Planner maakt iemand anders planner (of niet meer). Jezelf terugzetten kan niet,
--- zodat de club nooit zonder planner komt te zitten.
+-- zodat de club nooit zonder planner komt te zitten. Nog niet ingelogd: wordt planner bij de eerste keer inloggen.
 create or replace function public.set_planner(p_referee uuid, p_value boolean) returns void
 language plpgsql security definer set search_path = public as $$
 declare uid uuid;
 begin
   if not is_planner() then raise exception 'Alleen planners kunnen dit wijzigen.'; end if;
   select user_id into uid from referees where id = p_referee;
-  if uid is null then raise exception 'Deze scheidsrechter heeft nog niet ingelogd.'; end if;
   if uid = auth.uid() and not p_value then raise exception 'Je kunt jezelf niet als planner verwijderen.'; end if;
-  update profiles set role = case when p_value then 'planner' else 'referee' end where id = uid;
+  update referees set invite_planner = p_value where id = p_referee;
+  if uid is not null then
+    update profiles set role = case when p_value then 'planner' else 'referee' end where id = uid;
+  end if;
 end $$;
 
 -- Rollen van gekoppelde scheidsrechters (alleen voor planners).

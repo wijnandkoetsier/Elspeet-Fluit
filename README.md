@@ -24,7 +24,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - Per dag zien **wie er kan fluiten**, en beschikbaarheid invullen namens iemand (ook voor scheidsrechters zonder account)
 - Zien wie nog niets heeft ingevuld en een herinnering mailen
 - Waarschuwing in de planning en een melding als een aangestelde scheidsrechter zich afmeldt
-- Andere planners aanwijzen; een planner kan zelf ook fluiten (via **Overzicht**)
+- Andere planners aanwijzen: bij **Scheidsen → Toevoegen** kies je Scheidsrechter, Planner (plant alleen, wordt nooit ingepland) of Allebei
 - Weekprogramma en seizoenscijfers exporteren (CSV, opent in Excel)
 
 Alle wijzigingen komen via Supabase Realtime direct op alle telefoons binnen.
