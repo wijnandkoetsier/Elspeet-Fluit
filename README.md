@@ -14,7 +14,8 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 
 **Planner**
 - Thuiswedstrijden **automatisch uit Sportlink** (Club.Dataservice), elk uur bijgewerkt; of handmatig/CSV
-- Speelduur per categorie automatisch ingevuld (bijv. JO9 45 min, JO13 65 min, senioren 105 min)
+- Speelduur per categorie automatisch ingevuld (bijv. O9 45 min, O13 65 min, senioren 105 min)
+- Scheidsrechters die in Sportlink al zijn aangesteld worden overgenomen
 - Wedstrijden markeren waarvoor de KNVB zelf aanstelt
 - Per wedstrijd een gerangschikte kandidatenlijst: beschikbaarheid, tijdconflicten, maximum per dag, voorkeuren en aantal wedstrijden dit seizoen
 - **Voorstel maken** vult de hele speeldag automatisch in als concept
@@ -101,6 +102,8 @@ De app haalt de thuiswedstrijden op via een klein PHP-bestand op je eigen hostin
 - wedstrijden die uit het Sportlink-programma verdwijnen (afgelast, verplaatst buiten de periode) **verwijderd**. Een aangestelde scheidsrechter krijgt daarvan een melding.
 
 Een wedstrijd die je eerder met de hand of via CSV invoerde (zelfde datum, tijd en thuisteam) wordt gekoppeld in plaats van dubbel toegevoegd; de aangestelde scheidsrechter blijft staan.
+
+**Scheidsrechters uit Sportlink:** staat in Sportlink al een scheidsrechter bij een wedstrijd, dan neemt de app die aanstelling over (direct gepubliceerd). De naam wordt herkend in je lijst bij **Scheidsen** ("Hoorn, D. (Daniël) v/d" → Daniël van der Hoorn); staat iemand er nog niet in, dan wordt hij aangemaakt met het label *Uit Sportlink* en kun je later een e-mailadres toevoegen. Sportlink is leidend: verandert de scheidsrechter daar, dan ook in de app. Wie je in de app zelf hebt ingepland, blijft staan zolang Sportlink niemand noemt. Voor de teams in `knvb_teams` (standaard *Elspeet 1*) stelt de KNVB aan: daar wordt de naam alleen getoond.
 
 **Stappen**
 

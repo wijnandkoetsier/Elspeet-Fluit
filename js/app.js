@@ -208,7 +208,11 @@ const team = (name) => esc(name).replace(/-/g, '\u2011');
 
 // One compact row in a day list: time | teams + labels / details | action.
 function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) {
-  const labels = [m.category && `<span class="label">${esc(m.category)}</span>`, m.external_ref && '<span class="label knvb">KNVB</span>'].filter(Boolean).join('');
+  const labels = [
+    m.category && `<span class="label">${esc(m.category)}</span>`,
+    m.match_type && `<span class="label type">${esc(m.match_type)}</span>`,
+    m.external_ref && '<span class="label knvb">KNVB</span>',
+  ].filter(Boolean).join('');
   return `
     <div class="mrow ${m.external_ref ? 'dim' : ''}" ${attrs}>
       <div class="t">${esc(time)}</div>
@@ -274,15 +278,17 @@ function planning(view) {
     const parts = m.field ? [esc(m.field)] : [];
     let action = '';
     if (m.external_ref) {
-      parts.push('KNVB stelt aan');
+      parts.push(m.sportlink_referee ? `KNVB: ${esc(m.sportlink_referee)}` : 'KNVB stelt aan');
     } else if (m.referee_id) {
       const issue = assignmentIssue(m, state.data);
-      parts.push(`<span class="st ${issue ? 'issue' : m.published ? 'pub' : 'concept'}">${esc(refName(m.referee_id))}<small>${m.published ? 'gepubliceerd' : 'concept'}</small></span>`);
+      const status = m.referee_from_sportlink ? 'via Sportlink' : m.published ? 'gepubliceerd' : 'concept';
+      parts.push(`<span class="st ${issue ? 'issue' : m.published ? 'pub' : 'concept'}">${esc(refName(m.referee_id))}<small>${status}</small></span>`);
       if (issue) parts.push(`<span class="issue-text">${ICONS.warn}${esc(issue.join(', '))}</span>`);
       action = `<button class="btn pill-btn ${issue ? 'assign' : ''}" data-assign="${m.id}">${issue ? 'Oplossen' : 'Wijzig'}</button>`;
     } else {
       const n = candidates(m, state.data).filter((c) => c.status === 'ok').length;
       parts.push(`<span class="st ${n ? 'ok' : 'none'}">${n ? `${n} beschikbaar` : 'niemand beschikbaar'}</span>`);
+      if (m.sportlink_referee) parts.push(`<span class="sl-ref">In Sportlink: ${esc(m.sportlink_referee)}</span>`);
       action = `<button class="btn pill-btn assign" data-assign="${m.id}">Toewijzen</button>`;
     }
     return matchRow(m, { sub: parts.join('<span class="sep">·</span>'), action });
@@ -454,7 +460,10 @@ function assignSheet(matchId) {
   const label = { ok: 'Beschikbaar', unknown: 'Onbekend', no: 'Niet' };
   sheet(`
     <h3>${esc(m.time)} · ${esc(m.home)}${m.away ? ' – ' + esc(m.away) : ''}</h3>
-    <p class="muted">${[m.field, m.category].filter(Boolean).map(esc).join(' · ')}</p>
+    <p class="muted">${[m.field, m.category, m.match_type].filter(Boolean).map(esc).join(' · ')}</p>
+    ${m.referee_from_sportlink
+      ? '<p class="muted note">Deze aanstelling komt uit Sportlink. Wijzig hem in Sportlink; een wijziging hier wordt bij de volgende synchronisatie teruggezet.</p>'
+      : m.sportlink_referee ? `<p class="muted note">In Sportlink staat als scheidsrechter: <b>${esc(m.sportlink_referee)}</b></p>` : ''}
     <div class="cands">
       ${list.map((c) => `
         <button class="cand ${c.status} ${c.referee.id === m.referee_id ? 'current' : ''}" data-ref="${c.referee.id}">
@@ -470,10 +479,10 @@ function assignSheet(matchId) {
       if (c.referee.id === m.referee_id) return close();
       if (c.status === 'no' && !await ask(`${c.referee.name}: ${c.reasons.join(', ')}. Toch toewijzen?`, 'Toch toewijzen')) return;
       close();
-      act(() => store.updateMatches([m.id], { referee_id: c.referee.id, published: false }), `${c.referee.name} toegewezen (concept).`);
+      act(() => store.updateMatches([m.id], { referee_id: c.referee.id, published: false, referee_from_sportlink: false }), `${c.referee.name} toegewezen (concept).`);
     });
     const un = $('#unassign', el);
-    if (un) un.onclick = () => { close(); act(() => store.updateMatches([m.id], { referee_id: null, published: false })); };
+    if (un) un.onclick = () => { close(); act(() => store.updateMatches([m.id], { referee_id: null, published: false, referee_from_sportlink: false })); };
   });
 }
 
@@ -615,7 +624,7 @@ function scheidsrechters(view) {
         <article class="card ref tap ${r.active === false ? 'dim' : ''}" data-edit="${r.id}">
           <div class="avatar">${esc(initials(r.name))}</div>
           <div class="body"><b>${esc(r.name)}</b>
-            <div class="meta">${r.is_planner ? '<span class="label">Planner</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length ? ' · graag ' + esc(r.pref_categories.join(', ')) : ''}</div></div>
+            <div class="meta">${r.is_planner ? '<span class="label">Planner</span> ' : ''}${r.sportlink_name ? '<span class="label type">Uit Sportlink</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length ? ' · graag ' + esc(r.pref_categories.join(', ')) : ''}</div></div>
           <div class="count">${counts[r.id] || 0}<small>${season}</small></div>
         </article>`).join('') || '<section class="card empty"><p>Nog geen scheidsrechters.</p></section>'}
     </div>

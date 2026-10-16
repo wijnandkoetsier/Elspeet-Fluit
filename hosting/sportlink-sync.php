@@ -64,6 +64,8 @@ function load_config(): array
             return $c + [
                 'allowed_origins' => [],
                 'days_ahead' => 42,
+                'club_name' => 'Elspeet',
+                'knvb_teams' => ['Elspeet 1'],
                 'sportlink_url' => 'https://data.sportlink.com',
             ];
         }
@@ -175,10 +177,15 @@ function pick(array $r, array $keys): ?string
     return null;
 }
 
-/** Categorie uit de teamnaam: "Elspeet JO11-1" → JO11, "Elspeet MO15-2" → MO15, "Elspeet 35+1" → Veteranen. */
+/**
+ * Categorie uit de teamnaam, in de KNVB-naamgeving: "Elspeet O13-1JM" → O13, oude namen als
+ * "JO11-1" of "MO15-2" → O11 / O15, "Elspeet VR1" → Vrouwen, "Elspeet 35+1" → Veteranen.
+ * Zelfde regels als categoryFromTeam() in js/logic.js.
+ */
 function category_from_team(string $team): string
 {
-    if (preg_match('/\b([JM]O)\s?(\d{1,2})\b/i', $team, $m)) return strtoupper($m[1]) . $m[2];
+    if (preg_match('/\b[JM]?O\s?(\d{1,2})(?=-|\b|[A-Z])/i', $team, $m)) return 'O' . (int) $m[1];
+    if (preg_match('/\bVR\s?\d|vrouwen|dames/i', $team)) return 'Vrouwen';
     if (preg_match('/(35\+|45\+|vet|VE\d)/i', $team)) return 'Veteranen';
     return 'Senioren';
 }
@@ -186,7 +193,7 @@ function category_from_team(string $team): string
 /** Speelduur incl. rust in minuten (KNVB-speeltijden). Zelfde tabel als defaultDuration() in js/logic.js. */
 function default_duration(string $category): int
 {
-    if (preg_match('/^[JM]O(\d{1,2})$/', $category, $m)) {
+    if (preg_match('/^[JM]?O(\d{1,2})$/', $category, $m)) {
         $age = (int) $m[1];
         return match (true) {
             $age <= 9 => 45,
@@ -200,7 +207,7 @@ function default_duration(string $category): int
     return $category === 'Veteranen' ? 80 : 105;
 }
 
-function map_match(array $r): ?array
+function map_match(array $r, string $club = ''): ?array
 {
     $status = (string) (pick($r, ['status', 'wedstrijdstatus']) ?? '');
     if (preg_match('/afgelast|vervallen|geannuleerd|afgekeurd/i', $status)) return null;
@@ -222,6 +229,16 @@ function map_match(array $r): ?array
         return null;
     }
 
+    // Oefenwedstrijden met een lokaal team heten soms alleen "JO8-1": zet de clubnaam ervoor.
+    if ($club !== '' && stripos($home, $club) === false) $home = "$club $home";
+
+    // Scheidsrechter zoals Sportlink die kent (bijv. door de KNVB of in Sportlink aangesteld).
+    $ref = pick($r, ['scheidsrechter', 'scheidsrechters']);
+    if ($ref) $ref = trim(preg_replace('/\s*\((?:Scheidsrechter|Assistent[^)]*)\)\s*/i', ' ', $ref));
+
+    $kind = (string) (pick($r, ['competitiesoort']) ?? '');
+    $type = preg_match('/oefen/i', $kind) ? 'Oefen' : (preg_match('/beker/i', $kind) ? 'Beker' : '');
+
     $field = pick($r, ['veld', 'veldnaam', 'accommodatieveld']);
     if ($field && preg_match('/^veld\b/i', $field)) $field = 'Veld' . substr($field, 4);
     $category = category_from_team($home);
@@ -235,7 +252,81 @@ function map_match(array $r): ?array
         'field' => $field ?? '',
         'category' => $category,
         'duration' => default_duration($category),
+        'match_type' => $type,
+        'sportlink_referee' => $ref ?: '',
     ];
+}
+
+// ---------- Bijwerken ----------
+
+// ---------- Scheidsrechters uit Sportlink ----------
+
+/** Afkortingen van tussenvoegsels zoals Sportlink ze schrijft. */
+function expand_infix(string $infix): string
+{
+    $map = ['v/d' => 'van der', 'v.d.' => 'van der', 'vd' => 'van der', 'v/d.' => 'van der', 'v.' => 'van', 'v' => 'van',
+            'd.' => 'de', 'i/t' => 'in ’t', 'v/h' => 'van het', 'v/den' => 'van den'];
+    $parts = preg_split('/\s+/', trim($infix)) ?: [];
+    return trim(implode(' ', array_map(fn($p) => $map[mb_strtolower($p)] ?? $p, $parts)));
+}
+
+/**
+ * "Hoorn, D. (Daniël) v/d"  → "Daniël van der Hoorn"
+ * "T.M. (Thomas) v/d Hoorn" → "Thomas van der Hoorn"
+ * "Jansen, B."              → "B. Jansen"
+ */
+function referee_display_name(string $raw): string
+{
+    $raw = trim(preg_replace('/\s+/', ' ', $raw));
+    $first = preg_match('/\(([^)]+)\)/', $raw, $m) ? trim($m[1]) : '';
+    $rest = trim(preg_replace('/\s*\([^)]*\)\s*/', ' ', $raw));
+    if (str_contains($rest, ',')) {
+        [$last, $after] = array_map('trim', explode(',', $rest, 2));
+        $tokens = $after === '' ? [] : explode(' ', $after);
+    } else {
+        $tokens = explode(' ', $rest);
+        $last = array_pop($tokens) ?? '';
+    }
+    $initials = implode('', array_filter($tokens, fn($t) => preg_match('/^(\p{Lu}\.)+$/u', $t)));
+    $infix = implode(' ', array_filter($tokens, fn($t) => !preg_match('/^(\p{Lu}\.)+$/u', $t)));
+    return trim(preg_replace('/\s+/', ' ', ($first !== '' ? $first : $initials) . ' ' . expand_infix($infix) . ' ' . $last));
+}
+
+/** Vergelijkingssleutel: kleine letters, zonder spaties en leestekens. */
+function name_key(string $name): string
+{
+    return preg_replace('/[^\p{L}\p{N}]/u', '', mb_strtolower($name));
+}
+
+/** Voornaam + achternaam zonder tussenvoegsel ("v/d" kan van der, van den of van de zijn). */
+function loose_key(string $name): string
+{
+    $parts = preg_split('/\s+/', trim($name)) ?: [];
+    return count($parts) < 2 ? name_key($name) : name_key($parts[0] . end($parts));
+}
+
+/** Zoek de scheidsrechter bij een Sportlink-naam; maak hem aan als hij nog niet bestaat. */
+function resolve_referee(array $c, array &$refs, string $raw, int &$created): ?string
+{
+    if ($raw === '') return null;
+    $display = referee_display_name($raw);
+    $key = name_key($display);
+    foreach ($refs as $r) {
+        if (($r['sportlink_name'] ?? '') === $key || name_key((string) $r['name']) === $key) return $r['id'];
+    }
+    // Geen exacte match: probeer voornaam + achternaam, maar alleen als dat precies één persoon is.
+    $loose = array_values(array_filter($refs, fn($r) => empty($r['sportlink_name']) && loose_key((string) $r['name']) === loose_key($display)));
+    if (count($loose) === 1) {
+        supabase($c, 'PATCH', 'referees?id=eq.' . rawurlencode($loose[0]['id']), ['sportlink_name' => $key], ['Prefer: return=minimal']);
+        foreach ($refs as &$r) if ($r['id'] === $loose[0]['id']) $r['sportlink_name'] = $key;
+        unset($r);
+        return $loose[0]['id'];
+    }
+    $row = supabase($c, 'POST', 'referees', ['name' => $display, 'sportlink_name' => $key, 'active' => true],
+        ['Prefer: return=representation']);
+    $refs[] = $row[0];
+    $created++;
+    return $row[0]['id'];
 }
 
 // ---------- Bijwerken ----------
@@ -244,43 +335,60 @@ function sync(array $c, array $feed): array
 {
     $today = date('Y-m-d');
     $until = date('Y-m-d', strtotime('+' . min(42, (int) $c['days_ahead']) . ' days'));
+    $knvbTeams = array_map('mb_strtolower', $c['knvb_teams'] ?? []);
 
-    $existing = supabase($c, 'GET', 'matches?select=id,sportlink_code,date,time,home,away,field,category&sportlink_code=not.is.null&date=gte.' . $today);
-    $manual = supabase($c, 'GET', 'matches?select=id,date,time,home&sportlink_code=is.null&date=gte.' . $today);
+    $existing = supabase($c, 'GET', 'matches?select=id,sportlink_code,date,time,home,away,field,category,match_type,sportlink_referee,referee_id,published,referee_from_sportlink,external_ref&sportlink_code=not.is.null&date=gte.' . $today);
+    $manual = supabase($c, 'GET', 'matches?select=id,date,time,home,referee_id&sportlink_code=is.null&date=gte.' . $today);
+    $refs = supabase($c, 'GET', 'referees?select=id,name,sportlink_name');
     $byCode = [];
     foreach ($existing as $m) $byCode[$m['sportlink_code']] = $m;
     $manualKey = [];
     foreach ($manual as $m) $manualKey[$m['date'] . '|' . $m['time'] . '|' . mb_strtolower($m['home'])] = $m;
 
-    $added = $updated = $removed = 0;
+    $added = $updated = $removed = $assigned = $createdRefs = 0;
     $inserts = [];
     $seen = [];
     foreach ($feed as $f) {
         $seen[$f['sportlink_code']] = true;
-        if (isset($byCode[$f['sportlink_code']])) {
-            $old = $byCode[$f['sportlink_code']];
+        $knvb = in_array(mb_strtolower($f['home']), $knvbTeams, true);
+        // Door de club in Sportlink aangesteld → overnemen. Bij KNVB-teams alleen de naam tonen.
+        $refId = $knvb ? null : resolve_referee($c, $refs, $f['sportlink_referee'], $createdRefs);
+
+        $old = $byCode[$f['sportlink_code']] ?? null;
+        if (!$old) {
+            $key = $f['date'] . '|' . $f['time'] . '|' . mb_strtolower($f['home']);
+            if (isset($manualKey[$key])) {
+                // Al eerder met de hand of via CSV ingevoerd: koppelen in plaats van dubbel toevoegen.
+                $old = $manualKey[$key] + ['sportlink_code' => null, 'referee_from_sportlink' => false, 'published' => false, 'external_ref' => false];
+                unset($manualKey[$key]);
+            }
+        }
+
+        if ($old) {
             $patch = [];
-            foreach (['date', 'time', 'home', 'away', 'field'] as $k) {
+            if (empty($old['sportlink_code'])) $patch += ['sportlink_code' => $f['sportlink_code'], 'source' => 'sportlink'];
+            foreach (['date', 'time', 'home', 'away', 'field', 'match_type', 'sportlink_referee'] as $k) {
                 if ((string) ($old[$k] ?? '') !== (string) $f[$k]) $patch[$k] = $f[$k];
             }
             if (empty($old['category'])) $patch['category'] = $f['category'];
+            if ($knvb && empty($old['external_ref'])) $patch['external_ref'] = true;
+            if ($refId && ($old['referee_id'] ?? null) !== $refId) {
+                $patch += ['referee_id' => $refId, 'published' => true, 'referee_from_sportlink' => true];
+                $assigned++;
+            } elseif (!$refId && !empty($old['referee_from_sportlink'])) {
+                // Scheidsrechter is in Sportlink weggehaald: alleen de aanstelling uit Sportlink vervalt.
+                $patch += ['referee_id' => null, 'published' => false, 'referee_from_sportlink' => false];
+            }
             if ($patch) {
                 supabase($c, 'PATCH', 'matches?id=eq.' . rawurlencode($old['id']), $patch, ['Prefer: return=minimal']);
                 $updated++;
             }
             continue;
         }
-        // Al eerder met de hand of via CSV ingevoerd? Dan koppelen in plaats van dubbel toevoegen.
-        $key = $f['date'] . '|' . $f['time'] . '|' . mb_strtolower($f['home']);
-        if (isset($manualKey[$key])) {
-            supabase($c, 'PATCH', 'matches?id=eq.' . rawurlencode($manualKey[$key]['id']),
-                ['sportlink_code' => $f['sportlink_code'], 'source' => 'sportlink', 'away' => $f['away'], 'field' => $f['field']],
-                ['Prefer: return=minimal']);
-            unset($manualKey[$key]);
-            $updated++;
-            continue;
-        }
-        $inserts[] = $f + ['source' => 'sportlink'];
+
+        $row = $f + ['source' => 'sportlink', 'external_ref' => $knvb, 'referee_id' => $refId, 'published' => (bool) $refId, 'referee_from_sportlink' => (bool) $refId];
+        if ($refId) $assigned++;
+        $inserts[] = $row;
     }
     if ($inserts) {
         supabase($c, 'POST', 'matches', $inserts, ['Prefer: return=minimal']);
@@ -297,7 +405,8 @@ function sync(array $c, array $feed): array
             $removed = count($gone);
         }
     }
-    return ['added' => $added, 'updated' => $updated, 'removed' => $removed, 'total' => count($feed)];
+    return ['added' => $added, 'updated' => $updated, 'removed' => $removed, 'total' => count($feed),
+            'scheidsrechters_overgenomen' => $assigned, 'scheidsrechters_aangemaakt' => $createdRefs];
 }
 
 function log_run(array $c, bool $ok, array $r, ?string $message): void
@@ -325,7 +434,7 @@ try {
     $records = fetch_sportlink($config);
     $mapped = [];
     foreach ($records as $r) {
-        if (is_array($r) && ($m = map_match($r))) $mapped[] = $m;
+        if (is_array($r) && ($m = map_match($r, (string) $config['club_name']))) $mapped[] = $m;
     }
 
     if (($_GET['mode'] ?? '') === 'test') {
@@ -341,6 +450,9 @@ try {
             'niet_herkend' => count($records) - count($mapped),
             'voorbeeld_van_sportlink' => array_slice($records, 0, 2),
             'zo_komen_ze_in_de_app' => array_slice($mapped, 0, 10),
+            'scheidsrechters_uit_sportlink' => array_values(array_unique(array_map(
+                fn($m) => $m['sportlink_referee'] . '  →  ' . referee_display_name($m['sportlink_referee']),
+                array_filter($mapped, fn($m) => $m['sportlink_referee'] !== '')))),
         ]);
     }
 

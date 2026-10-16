@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v3';
+const KEY = 'scheidsapp-demo-v4';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -13,20 +13,20 @@ function seed() {
   const next = new Date(sat); next.setDate(next.getDate() + 7);
   const d2 = iso(next);
   const referees = [
-    { id: 'r1', name: 'Anouk de Vries', email: 'anouk@example.nl', pref_categories: ['JO11', 'JO12'], avoid_categories: [], active: true, user_id: 'u1' },
-    { id: 'r2', name: 'Bram Jansen', email: 'bram@example.nl', pref_categories: ['JO15', 'JO17'], avoid_categories: ['JO8'], active: true, user_id: 'u2' },
+    { id: 'r1', name: 'Anouk de Vries', email: 'anouk@example.nl', pref_categories: ['O11', 'O12'], avoid_categories: [], active: true, user_id: 'u1' },
+    { id: 'r2', name: 'Bram Jansen', email: 'bram@example.nl', pref_categories: ['O15', 'O17'], avoid_categories: ['O8'], active: true, user_id: 'u2' },
     { id: 'r3', name: 'Chris Bakker', email: '', pref_categories: [], avoid_categories: [], active: true, user_id: null },
     // Daan is planner én scheidsrechter.
     { id: 'r4', name: 'Daan Visser', email: 'daan@example.nl', pref_categories: ['Senioren'], avoid_categories: [], active: true, user_id: 'u4', is_planner: true },
   ];
   const mk = (date, time, home, away, field, category) => ({ id: uid(), date, time, duration: 60, home, away, field, category, referee_id: null, published: false, external_ref: false });
   const matches = [
-    mk(d1, '08:30', 'Elspeet JO8-1', 'SVO JO8-2', 'Veld 2A', 'JO8'),
-    mk(d1, '09:00', 'Elspeet JO11-1', 'Blauw Wit JO11-3', 'Veld 1', 'JO11'),
-    mk(d1, '10:15', 'Elspeet JO12-2', 'DOS JO12-1', 'Veld 2', 'JO12'),
-    mk(d1, '11:30', 'Elspeet JO15-1', 'Rood Wit JO15-1', 'Veld 1', 'JO15'),
-    mk(d1, '13:00', 'Elspeet JO17-1', 'Fortuna JO17-2', 'Veld 1', 'JO17'),
-    mk(d2, '09:00', 'Elspeet JO11-2', 'Zwart Geel JO11-1', 'Veld 1', 'JO11'),
+    mk(d1, '08:30', 'Elspeet O8-1', 'SVO O8-2', 'Veld 2A', 'O8'),
+    mk(d1, '09:00', 'Elspeet O11-1', 'Blauw Wit O11-3', 'Veld 1', 'O11'),
+    mk(d1, '10:15', 'Elspeet O12-2', 'DOS O12-1', 'Veld 2', 'O12'),
+    mk(d1, '11:30', 'Elspeet O15-1', 'Rood Wit O15-1', 'Veld 1', 'O15'),
+    mk(d1, '13:00', 'Elspeet O17-1', 'Fortuna O17-2', 'Veld 1', 'O17'),
+    mk(d2, '09:00', 'Elspeet O11-2', 'Zwart Geel O11-1', 'Veld 1', 'O11'),
     mk(d2, '14:30', 'Elspeet 1', 'VV Oost 1', 'Hoofdveld', 'Senioren'),
   ];
   matches[6].duration = 105;
@@ -127,14 +127,17 @@ export function createLocalStore() {
       sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7) + 14);
       const d = `${sat.getFullYear()}-${String(sat.getMonth() + 1).padStart(2, '0')}-${String(sat.getDate()).padStart(2, '0')}`;
       const feed = [
-        ['SL-1001', '08:45', 'Elspeet JO9-1', 'Nunspeet JO9-3', 'Veld 2', 'JO9', 45],
-        ['SL-1002', '10:00', 'Elspeet JO13-1', 'Hulshorst JO13-2', 'Veld 1', 'JO13', 65],
-        ['SL-1003', '11:30', 'Elspeet MO15-1', 'Putten MO15-1', 'Veld 1', 'MO15', 75],
+        ['SL-1001', '08:45', 'Elspeet O9-1', 'Nunspeet O9-3', 'Veld 2', 'O9', 45],
+        ['SL-1002', '10:00', 'Elspeet O13-1', 'Hulshorst O13-2', 'Veld 1', 'O13', 65],
+        ['SL-1003', '11:30', 'Elspeet O15-1', 'Putten O15-1', 'Veld 1', 'O15', 75],
       ];
       let added = 0;
       for (const [code, time, home, away, field, category, duration] of feed) {
         if (db.matches.some((m) => m.sportlink_code === code)) continue;
-        db.matches.push({ id: uid(), sportlink_code: code, source: 'sportlink', date: d, time, home, away, field, category, duration, referee_id: null, published: false, external_ref: false });
+        const fromSportlink = code === 'SL-1002' ? 'r2' : null; // in Sportlink al aangesteld: Bram Jansen
+        db.matches.push({ id: uid(), sportlink_code: code, source: 'sportlink', date: d, time, home, away, field, category, duration,
+          match_type: code === 'SL-1001' ? 'Oefen' : '', sportlink_referee: fromSportlink ? 'Jansen, B. (Bram)' : '',
+          referee_id: fromSportlink, published: !!fromSportlink, referee_from_sportlink: !!fromSportlink, external_ref: false });
         added++;
       }
       db.lastSync = { at: new Date().toISOString(), ok: true, added, updated: 0, removed: 0, total: feed.length };

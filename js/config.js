@@ -12,4 +12,5 @@ export const VAPID_PUBLIC_KEY = '';
 
 export const APP_NAME = 'Elspeet Fluit';
 export const CLUB_NAME = 'VV Elspeet';
-export const CATEGORIES = ['JO8', 'JO9', 'JO10', 'JO11', 'JO12', 'JO13', 'JO14', 'JO15', 'JO17', 'JO19', 'MO13', 'MO15', 'MO17', 'Senioren', 'Veteranen'];
+// KNVB-categorieën (O = onder, zoals in Sportlink: "Elspeet O13-1").
+export const CATEGORIES = ['O7', 'O8', 'O9', 'O10', 'O11', 'O12', 'O13', 'O14', 'O15', 'O16', 'O17', 'O19', 'Vrouwen', 'Senioren', 'Veteranen'];

@@ -30,6 +30,13 @@ return [
         'https://wijnandkoetsier.github.io',
     ],
 
+    // Clubnaam die voor teamnamen zonder club wordt gezet ("JO8-1" → "Elspeet JO8-1").
+    'club_name' => 'Elspeet',
+
+    // Teams waarvoor de KNVB de scheidsrechter aanstelt. Bij deze wedstrijden wordt de scheidsrechter
+    // uit Sportlink alleen getoond, niet als clubscheidsrechter ingepland.
+    'knvb_teams' => ['Elspeet 1'],
+
     // Hoeveel dagen vooruit ophalen (Sportlink staat maximaal 42 toe).
     'days_ahead' => 42,
 ];

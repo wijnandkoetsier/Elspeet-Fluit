@@ -44,6 +44,11 @@ create index if not exists matches_date_idx on public.matches (date);
 -- Wedstrijden uit Sportlink (zie hosting/sportlink-sync.php): herkend aan de Sportlink-wedstrijdcode.
 alter table public.matches add column if not exists sportlink_code text unique;
 alter table public.matches add column if not exists source text not null default 'manual';
+alter table public.matches add column if not exists match_type text;          -- 'Oefen', 'Beker' of leeg (competitie)
+alter table public.matches add column if not exists sportlink_referee text;   -- scheidsrechter volgens Sportlink
+alter table public.matches add column if not exists referee_from_sportlink boolean not null default false;
+-- Scheidsrechters die uit Sportlink zijn overgenomen worden herkend aan hun naam in Sportlink.
+alter table public.referees add column if not exists sportlink_name text;
 
 -- Logboek van de Sportlink-synchronisatie (laatste run zichtbaar voor planners).
 create table if not exists public.sync_runs (
