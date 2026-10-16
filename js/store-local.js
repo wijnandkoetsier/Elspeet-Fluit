@@ -1,5 +1,5 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
-import { matchChangeNotifications, unavailableNotification } from './logic.js';
+import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
 const KEY = 'scheidsapp-demo-v4';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
@@ -36,11 +36,15 @@ function seed() {
     { id: uid(), referee_id: 'r2', date: d1, available: true, start_time: '10:00', end_time: '16:00', max_matches: 2 },
     { id: uid(), referee_id: 'r4', date: d1, available: false, start_time: '', end_time: '', max_matches: null },
   ];
-  return { matches, referees, availability, notifications: [], user: null };
+  return { matches, referees, availability, notifications: [], offers: [], user: null };
 }
 
 function load() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || seed(); } catch { return seed(); }
+  try {
+    const db = JSON.parse(localStorage.getItem(KEY)) || seed();
+    db.offers ||= [];
+    return db;
+  } catch { return seed(); }
 }
 
 export function createLocalStore() {
@@ -83,12 +87,13 @@ export function createLocalStore() {
     async loadAll() {
       const me = db.user?.referee_id;
       const notifications = db.notifications.filter((n) => n.referee_id === me || (n.to_planners && isPlanner()));
-      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications, lastSync: db.lastSync || null };
+      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications, offers: [...db.offers], lastSync: db.lastSync || null };
       return {
         matches: [...db.matches],
         referees: db.referees.filter((r) => r.id === me),
         availability: db.availability.filter((a) => a.referee_id === me),
         notifications,
+        offers: db.offers.filter((o) => o.referee_id === me),
       };
     },
     async saveMatches(list) {
@@ -164,6 +169,20 @@ export function createLocalStore() {
     },
     async deleteAvailability(refereeId, date) {
       db.availability = db.availability.filter((x) => !(x.referee_id === refereeId && x.date === date));
+      save();
+    },
+    // "Ik kan fluiten": same rules as the offers table and its trigger in the database.
+    async addOffer(matchId) {
+      const me = db.user.referee_id;
+      if (db.offers.some((o) => o.match_id === matchId && o.referee_id === me)) return;
+      const m = db.matches.find((x) => x.id === matchId);
+      db.offers.push({ id: uid(), match_id: matchId, referee_id: me, created_at: new Date().toISOString() });
+      const name = db.referees.find((r) => r.id === me)?.name || 'Scheidsrechter';
+      notify([{ referee_id: null, to_planners: true, kind: 'offer', title: `${name} wil fluiten`, body: matchLabel(m), match_id: m.id, date: m.date }]);
+      save();
+    },
+    async removeOffer(matchId) {
+      db.offers = db.offers.filter((o) => !(o.match_id === matchId && o.referee_id === db.user.referee_id));
       save();
     },
     async markRead(ids) {

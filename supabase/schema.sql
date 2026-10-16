@@ -90,6 +90,15 @@ create table if not exists public.notifications (
 );
 create index if not exists notifications_ref_idx on public.notifications (referee_id, created_at desc);
 
+-- Scheidsrechter biedt zich aan voor een open wedstrijd ("Ik kan fluiten").
+create table if not exists public.offers (
+  id uuid primary key default gen_random_uuid(),
+  match_id uuid not null references public.matches on delete cascade,
+  referee_id uuid not null references public.referees on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (match_id, referee_id)
+);
+
 -- Pushmeldingen: één rij per toestel dat meldingen heeft aangezet.
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -233,6 +242,21 @@ begin
           'Afgemeld voor ' || to_char(new.date, 'DD-MM') || ', maar aangesteld bij ' || n || ' wedstrijd(en).', new.date);
   return new;
 end $$;
+-- Aanbod van een scheidsrechter → melding voor planners.
+create or replace function public.notify_offer() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare m matches; who text;
+begin
+  select * into m from matches where id = new.match_id;
+  select name into who from referees where id = new.referee_id;
+  insert into notifications (to_planners, kind, title, body, match_id, date)
+  values (true, 'offer', who || ' wil fluiten', match_label(m), m.id, m.date);
+  return new;
+end $$;
+drop trigger if exists offers_notify on public.offers;
+create trigger offers_notify after insert on public.offers
+  for each row execute function public.notify_offer();
+
 drop trigger if exists availability_notify on public.availability;
 create trigger availability_notify after insert or update on public.availability
   for each row execute function public.notify_unavailable();
@@ -245,6 +269,7 @@ alter table public.availability enable row level security;
 alter table public.notifications enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.sync_runs enable row level security;
+alter table public.offers enable row level security;
 
 -- Scheidsrechters zien alleen hun eigen gegevens; planners zien alles.
 drop policy if exists "profiles read" on public.profiles;
@@ -291,6 +316,16 @@ drop policy if exists "sync runs read" on public.sync_runs;
 create policy "sync runs read" on public.sync_runs for select to authenticated using (is_planner());
 -- Schrijven gebeurt alleen door de synchronisatie zelf, met de service role-sleutel (die RLS overslaat).
 
+drop policy if exists "offers read" on public.offers;
+drop policy if exists "offers own insert" on public.offers;
+drop policy if exists "offers delete" on public.offers;
+create policy "offers read" on public.offers for select to authenticated
+  using (referee_id = my_referee_id() or is_planner());
+create policy "offers own insert" on public.offers for insert to authenticated
+  with check (referee_id = my_referee_id());
+create policy "offers delete" on public.offers for delete to authenticated
+  using (referee_id = my_referee_id() or is_planner());
+
 drop policy if exists "push own" on public.push_subscriptions;
 create policy "push own" on public.push_subscriptions for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -298,6 +333,9 @@ create policy "push own" on public.push_subscriptions for all to authenticated
 -- Realtime: wijzigingen direct naar alle telefoons.
 do $$ begin
   alter publication supabase_realtime add table public.matches, public.referees, public.availability, public.notifications;
+exception when others then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.offers;
 exception when others then null; end $$;
 
 -- Eerste planner instellen:

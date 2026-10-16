@@ -5,6 +5,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 ## Wat kan het?
 
 **Scheidsrechter**
+- **Overzicht** als startpagina: komende wedstrijden die je fluit, de laatste meldingen, en open wedstrijden zonder scheidsrechter met de knop **Ik kan fluiten** (de planner krijgt bericht en ziet je bovenaan bij het toewijzen)
 - Beschikbaarheid per speeldag doorgeven: ja/nee, van–tot en maximaal aantal wedstrijden
 - Langere afwezigheid (vakantie, blessure) in één keer afmelden
 - Eigen gepubliceerde aanstellingen zien en in de agenda zetten (.ics)

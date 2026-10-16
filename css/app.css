@@ -448,3 +448,12 @@ a.mrow.menu { color: inherit; }
 
 /* Code-invoer: placeholder kleiner dan de cijfers zelf */
 .code-input::placeholder { font-size: 1rem; letter-spacing: normal; font-weight: 500; }
+
+/* Overzicht (scheidsrechter) */
+.list-intro { padding: 12px 14px 4px; margin: 0; font-size: .85rem; }
+.link-row.pad-row { margin: 0; padding: 12px 14px; text-decoration: none; }
+.btn.pill-btn.offered { background: var(--brand-soft); color: var(--brand); border-color: transparent; }
+.small-note { font-size: .78rem; }
+.offer-text { flex-basis: 100%; font-size: .82rem; font-weight: 600; color: var(--brand); }
+.k-offer .nicon { background: var(--brand-soft); color: var(--brand); }
+.cand .who small { overflow-wrap: anywhere; }
