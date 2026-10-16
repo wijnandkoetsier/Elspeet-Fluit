@@ -24,7 +24,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - Per dag zien **wie er kan fluiten**, en beschikbaarheid invullen namens iemand (ook voor scheidsrechters zonder account)
 - Zien wie nog niets heeft ingevuld en een herinnering mailen
 - Waarschuwing in de planning en een melding als een aangestelde scheidsrechter zich afmeldt
-- Andere planners aanwijzen; een planner kan zelf ook fluiten (via **Meer**)
+- Andere planners aanwijzen; een planner kan zelf ook fluiten (via **Overzicht**)
 - Weekprogramma en seizoenscijfers exporteren (CSV, opent in Excel)
 
 Alle wijzigingen komen via Supabase Realtime direct op alle telefoons binnen.
@@ -140,7 +140,7 @@ datum;tijd;thuis;uit;veld;categorie
 |---|---|
 | `index.html`, `css/app.css` | App-schil en opmaak in clubkleuren (zwart-wit, groen en geel; tekstgrootte instelbaar) |
 | `icons/` | Clublogo en app-iconen |
-| `js/app.js` | Schermen en interactie (Sportlink ophalen en CSV-import staan onder **Meer**) |
+| `js/app.js` | Schermen en interactie (Sportlink ophalen en CSV-import staan onder **Overzicht**) |
 | `js/logic.js` | Planningslogica: kandidaten rangschikken, voorstel, CSV |
 | `js/store-local.js` | Demo-opslag op het toestel |
 | `js/store-supabase.js` | Gedeelde opslag via Supabase |
