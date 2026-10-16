@@ -792,7 +792,7 @@ function overzicht(view) {
   }).join('');
 
   view.innerHTML = `
-    <h2 class="hello">Hoi ${esc(store.user.name.split(' ')[0])}</h2>
+    ${heroCard('scheidsrechter', 'Klaar voor de volgende speeldag? Bekijk wanneer je mag fluiten.')}
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
     ${todo.length ? `<a class="card warn tap block" href="#beschikbaarheid">📅 Vul je beschikbaarheid in voor ${todo.length} dag(en) →</a>` : ''}
     ${dayList('Ik fluit', `<span class="pill ${mine.length ? 'done' : ''}">${mine.length} komend</span>`,
@@ -1173,6 +1173,16 @@ function base64UrlToBytes(b64) {
 // Short explanation, the tabs with what needs attention, and the former "Meer" items.
 // The club logo as the page already has it (also works in the single-file demo).
 const LOGO = () => document.querySelector('.brand img')?.src || 'icons/logo.png';
+// Welcome card at the top of Overzicht (planner and referee).
+const heroCard = (role, text) => `
+    <section class="hero">
+      <img class="hero-logo" src="${esc(LOGO())}" alt="Logo ${esc(CLUB_NAME)}">
+      <div class="hero-text">
+        <small>${esc(CLUB_NAME)} · ${role}</small>
+        <h2>Hoi ${esc(store.user.name.split(' ')[0])}</h2>
+        <p>${text}</p>
+      </div>
+    </section>`;
 const menuLink = (href, icon, title, sub, right = '') => `
   <a class="mrow menu" href="#${href}"><span class="micon">${icon}</span>
     <div class="info"><b>${title}</b><div class="sub">${sub}</div>${right && right.replace(/<[^>]+>/g, '') ? `<div class="menu-pills">${right}</div>` : ''}</div><span class="chev" aria-hidden="true">›</span></a>`;
@@ -1191,14 +1201,7 @@ function plannerOverzicht(view) {
   const pill = (n, text, cls = 'open') => (n ? `<span class="pill ${cls}">${n} ${text}</span>` : '');
 
   view.innerHTML = `
-    <section class="hero">
-      <img class="hero-logo" src="${esc(LOGO())}" alt="Logo VV Elspeet">
-      <div class="hero-text">
-        <small>${esc(CLUB_NAME)} · planner</small>
-        <h2>Hoi ${esc(store.user.name.split(' ')[0])}</h2>
-        <p>Wedstrijden, scheidsrechters en aanstellingen op één plek.</p>
-      </div>
-    </section>
+    ${heroCard('planner', 'Wedstrijden, scheidsrechters en aanstellingen op één plek.')}
     <section class="card day-list">
       <header class="day-head"><h2>Zo werkt het</h2></header>
       <ol class="steps">

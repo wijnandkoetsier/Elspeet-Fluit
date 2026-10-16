@@ -89,7 +89,6 @@ main {
 .tap:active { transform: scale(.99); }
 .login { margin-top: 24px; }
 .login .btn { margin-top: 10px; }
-.hello { margin: 4px 4px 12px; }
 .day { margin: 18px 4px 8px; font-size: .95rem; color: var(--muted); }
 .day::first-letter { text-transform: uppercase; }
 
