@@ -1196,7 +1196,7 @@ function plannerOverzicht(view) {
       <div class="hero-text">
         <small>${esc(CLUB_NAME)} · planner</small>
         <h2>Hoi ${esc(store.user.name.split(' ')[0])}</h2>
-        <p>Welkom bij ${esc(APP_NAME)}. Hier regel je wie er fluit: van de wedstrijden uit Sportlink tot de melding op de telefoon van de scheidsrechter.</p>
+        <p>Welkom bij ${esc(APP_NAME)}. Hier regel je wie er fluit.</p>
       </div>
     </section>
     <section class="card day-list">
