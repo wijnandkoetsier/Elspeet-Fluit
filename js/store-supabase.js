@@ -2,16 +2,24 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 
 // Supabase reports a refused sign-up (our handle_new_user trigger) as a generic database error.
-function friendly(message) {
-  if (/database error saving new user|niet bekend bij de club/i.test(message)) {
-    return 'Dit e-mailadres is niet bekend bij de club. Vraag de planner om je toe te voegen.';
+// Login messages only apply to login calls (context 'auth'); database errors get their own wording.
+function friendly(message, context = 'db') {
+  if (context === 'auth') {
+    if (/database error saving new user|niet bekend bij de club/i.test(message)) {
+      return 'Dit e-mailadres is niet bekend bij de club. Vraag de planner om je toe te voegen.';
+    }
+    if (/token has expired|otp.*(expired|invalid)|invalid.*(otp|token)/i.test(message)) return 'De code klopt niet of is verlopen. Vraag een nieuwe code aan.';
+    if (/rate limit|security purposes/i.test(message)) return 'Even wachten: je kunt over een minuut een nieuwe code aanvragen.';
+    // Without custom SMTP, Supabase only mails the members of the Supabase account.
+    if (/not authorized|error sending (magic link|confirmation|otp)/i.test(message)) {
+      return 'Er kan nog geen inlogmail naar dit adres worden gestuurd. Zolang de club nog geen eigen mailserver (SMTP) heeft ingesteld, werkt alleen het e-mailadres waarmee je Supabase-account is aangemaakt.';
+    }
+    return message;
   }
-  if (/token has expired|invalid/i.test(message)) return 'De code klopt niet of is verlopen. Vraag een nieuwe code aan.';
-  if (/rate limit|security purposes/i.test(message)) return 'Even wachten: je kunt over een minuut een nieuwe code aanvragen.';
-  // Without custom SMTP, Supabase only mails the members of the Supabase account.
-  if (/not authorized|error sending (magic link|confirmation|otp)/i.test(message)) {
-    return 'Er kan nog geen inlogmail naar dit adres worden gestuurd. Zolang de club nog geen eigen mailserver (SMTP) heeft ingesteld, werkt alleen het e-mailadres waarmee je Supabase-account is aangemaakt.';
+  if (/jwt|row-level security|permission denied/i.test(message)) {
+    return 'Opslaan is niet gelukt: je inlog is verlopen of je hebt hier geen rechten voor. Log uit en opnieuw in.';
   }
+  if (/failed to fetch|network/i.test(message)) return 'Geen verbinding. Controleer je internet en probeer het opnieuw.';
   return message;
 }
 
@@ -21,6 +29,22 @@ export function createSupabaseStore(url, key) {
   const listeners = new Set();
   const emit = () => listeners.forEach((f) => f());
   const check = ({ data, error }) => { if (error) throw new Error(friendly(error.message)); return data; };
+  const checkAuth = ({ data, error }) => { if (error) throw new Error(friendly(error.message, 'auth')); return data; };
+
+  // Writes: if the login has expired (common after the app sat in the background), refresh it and
+  // try once more. Updates select the changed ids, because a refused update returns no error.
+  async function write(run, { expectRows = 0 } = {}) {
+    let res = await run();
+    if (res.error && /jwt|row-level security|permission denied/i.test(res.error.message)) {
+      await sb.auth.refreshSession().catch(() => {});
+      res = await run();
+    }
+    const data = check(res);
+    if (expectRows && Array.isArray(data) && data.length === 0) {
+      throw new Error(friendly('row-level security'));
+    }
+    return data;
+  }
 
   async function loadUser(session) {
     if (!session) { user = null; return null; }
@@ -45,21 +69,27 @@ export function createSupabaseStore(url, key) {
     get user() { return user; },
     async init() {
       const { data } = await sb.auth.getSession();
-      sb.auth.onAuthStateChange(async (_e, session) => {
-        const before = user?.id;
-        await loadUser(session);
-        if (before !== user?.id) emit();
+      // Never await Supabase calls inside this callback: supabase-js holds its auth lock while it runs,
+      // so a query here (e.g. during the hourly token refresh) waits for itself and every later
+      // request hangs. Defer the work, and only reload the profile when someone signs in or out.
+      sb.auth.onAuthStateChange((event, session) => {
+        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') return;
+        setTimeout(async () => {
+          const before = user?.id;
+          try { await loadUser(session); } catch { /* shown on the next action */ }
+          if (before !== user?.id) emit();
+        }, 0);
       });
       return loadUser(data.session);
     },
     // Step 1: e-mail a 6-digit code (the e-mail also contains a link, which keeps working in a browser).
     async signIn({ email }) {
-      check(await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: location.origin + location.pathname } }));
+      checkAuth(await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: location.origin + location.pathname } }));
       return { done: false, message: `We hebben een code gestuurd naar ${email}.` };
     },
     // Step 2: the code typed into the app, so login also works inside an installed app.
     async verifyCode({ email, token }) {
-      const data = check(await sb.auth.verifyOtp({ email, token, type: 'email' }));
+      const data = checkAuth(await sb.auth.verifyOtp({ email, token, type: 'email' }));
       await loadUser(data.session);
       emit();
     },
@@ -99,21 +129,23 @@ export function createSupabaseStore(url, key) {
     async saveMatches(list) {
       const inserts = list.filter((m) => !m.id);
       const updates = list.filter((m) => m.id);
-      if (inserts.length) check(await sb.from('matches').insert(inserts));
-      for (const m of updates) check(await sb.from('matches').update(m).eq('id', m.id));
+      if (inserts.length) await write(() => sb.from('matches').insert(inserts));
+      for (const m of updates) await write(() => sb.from('matches').update(m).eq('id', m.id).select('id'), { expectRows: 1 });
     },
-    async updateMatches(ids, patch) { check(await sb.from('matches').update(patch).in('id', ids)); },
-    async deleteMatch(id) { check(await sb.from('matches').delete().eq('id', id)); },
+    async updateMatches(ids, patch) {
+      if (ids.length) await write(() => sb.from('matches').update(patch).in('id', ids).select('id'), { expectRows: 1 });
+    },
+    async deleteMatch(id) { await write(() => sb.from('matches').delete().eq('id', id)); },
     async saveReferee(r) {
       const { is_planner, ...row } = r;
-      if (row.id) check(await sb.from('referees').update(row).eq('id', row.id));
-      else check(await sb.from('referees').insert(row));
+      if (row.id) await write(() => sb.from('referees').update(row).eq('id', row.id).select('id'), { expectRows: 1 });
+      else await write(() => sb.from('referees').insert(row));
     },
-    async deleteReferee(id) { check(await sb.from('referees').delete().eq('id', id)); },
+    async deleteReferee(id) { await write(() => sb.from('referees').delete().eq('id', id)); },
     async setPlanner(refereeId, value) { check(await sb.rpc('set_planner', { p_referee: refereeId, p_value: value })); },
     async saveAvailability(a) {
       const { id, ...row } = a;
-      check(await sb.from('availability').upsert(row, { onConflict: 'referee_id,date' }));
+      await write(() => sb.from('availability').upsert(row, { onConflict: 'referee_id,date' }));
     },
     async deleteAvailability(refereeId, date) {
       check(await sb.from('availability').delete().eq('referee_id', refereeId).eq('date', date));
