@@ -1,0 +1,228 @@
+// Pure planning logic: no DOM, no storage. Shared by the UI and the auto-proposal.
+
+export const toMin = (t) => {
+  const [h, m] = String(t || '0:0').split(':').map(Number);
+  return h * 60 + (m || 0);
+};
+
+export const fromMin = (n) =>
+  `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+
+export const matchEnd = (m) => toMin(m.time) + (Number(m.duration) || 90);
+
+// Two matches overlap when they are on the same day and their time ranges intersect,
+// including a short buffer so a referee can move between fields.
+export function overlaps(a, b, buffer = 15) {
+  if (a.date !== b.date) return false;
+  return toMin(a.time) < matchEnd(b) + buffer && toMin(b.time) < matchEnd(a) + buffer;
+}
+
+// Football season runs from 1 July to 30 June.
+export function seasonOf(date) {
+  const d = new Date(date + 'T12:00:00');
+  const y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1;
+  return { start: `${y}-07-01`, end: `${y + 1}-06-30`, label: `${y}/${String(y + 1).slice(2)}` };
+}
+
+export function seasonCounts(matches, date) {
+  const { start, end } = seasonOf(date);
+  const counts = {};
+  for (const m of matches) {
+    if (m.referee_id && m.date >= start && m.date <= end) counts[m.referee_id] = (counts[m.referee_id] || 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * Rank referees for a match.
+ * status: 'ok' (available, fits), 'unknown' (nothing filled in), 'no' (unavailable or conflict).
+ */
+export function candidates(match, { referees, availability, matches }) {
+  const counts = seasonCounts(matches, match.date);
+  const start = toMin(match.time);
+  const end = matchEnd(match);
+
+  return referees
+    .filter((r) => r.active !== false)
+    .map((r) => {
+      const av = availability.find((a) => a.referee_id === r.id && a.date === match.date);
+      const sameDay = matches.filter((m) => m.id !== match.id && m.referee_id === r.id && m.date === match.date);
+      const conflict = sameDay.find((m) => overlaps(m, match));
+      const reasons = [];
+      let status = 'ok';
+
+      if (!av) {
+        status = 'unknown';
+        reasons.push('Niets ingevuld');
+      } else if (!av.available) {
+        status = 'no';
+        reasons.push('Niet beschikbaar');
+      } else {
+        if (av.start_time && toMin(av.start_time) > start) { status = 'no'; reasons.push(`Pas vanaf ${av.start_time}`); }
+        if (av.end_time && toMin(av.end_time) < end) { status = 'no'; reasons.push(`Tot ${av.end_time}`); }
+        if (av.max_matches && sameDay.length >= av.max_matches) { status = 'no'; reasons.push(`Max ${av.max_matches} per dag bereikt`); }
+      }
+      if (conflict) { status = 'no'; reasons.push(`Fluit al ${conflict.time} ${conflict.home}`); }
+
+      const prefs = r.pref_categories || [];
+      const avoid = r.avoid_categories || [];
+      const likes = match.category && prefs.includes(match.category);
+      const dislikes = match.category && avoid.includes(match.category);
+      if (likes) reasons.push('Fluit dit graag');
+      if (dislikes) reasons.push('Liever niet deze categorie');
+
+      const statusRank = { ok: 0, unknown: 1, no: 2 }[status];
+      const score = statusRank * 1000 + (dislikes ? 50 : 0) - (likes ? 50 : 0) + (counts[r.id] || 0);
+      return { referee: r, status, reasons, season: counts[r.id] || 0, day: sameDay.length, score };
+    })
+    .sort((a, b) => a.score - b.score || a.referee.name.localeCompare(b.referee.name));
+}
+
+// Greedy proposal for all unassigned matches on a day. Returns [{matchId, refereeId}].
+export function proposeDay(date, data) {
+  const working = data.matches.map((m) => ({ ...m }));
+  const proposal = [];
+  const todo = working.filter((m) => m.date === date && !m.referee_id && !m.external_ref)
+    .sort((a, b) => toMin(a.time) - toMin(b.time));
+  for (const m of todo) {
+    const best = candidates(m, { ...data, matches: working }).find((c) => c.status === 'ok');
+    if (best) {
+      m.referee_id = best.referee.id;
+      proposal.push({ matchId: m.id, refereeId: best.referee.id });
+    }
+  }
+  return proposal;
+}
+
+// Dates a referee should fill in: Saturdays of the coming 4 weeks plus any day that has matches.
+export function availabilityDates(matches, today = new Date(), weeks = 4) {
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const set = new Set();
+  const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  const last = new Date(d);
+  last.setUTCDate(last.getUTCDate() + weeks * 7);
+  for (const x = new Date(d); x <= last; x.setUTCDate(x.getUTCDate() + 1)) {
+    if (x.getUTCDay() === 6) set.add(iso(x));
+  }
+  for (const m of matches) if (m.date >= iso(d) && m.date <= iso(last)) set.add(m.date);
+  return [...set].sort();
+}
+
+// Minimal CSV parser (handles quotes, ; or , separators).
+export function parseCSV(text) {
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const sep = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
+  const rows = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') q = false;
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === sep) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+
+// Accepts dd-mm-yyyy, dd/mm/yyyy or yyyy-mm-dd.
+export function normalizeDate(s) {
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) {
+    const y = m[3].length === 2 ? '20' + m[3] : m[3];
+    return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  }
+  return null;
+}
+
+export function csvMatches(text) {
+  const rows = parseCSV(text);
+  if (!rows.length) return [];
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const col = (...names) => header.findIndex((h) => names.some((n) => h.includes(n)));
+  const idx = {
+    date: col('datum', 'date'),
+    time: col('tijd', 'aanvang', 'time'),
+    home: col('thuis', 'home'),
+    away: col('uit', 'away', 'tegenstander'),
+    field: col('veld', 'field'),
+    category: col('categorie', 'klasse', 'category'),
+  };
+  if (idx.date < 0 || idx.time < 0 || idx.home < 0) {
+    throw new Error('CSV mist kolommen. Nodig: datum, tijd, thuis (optioneel: uit, veld, categorie).');
+  }
+  return rows.slice(1).map((r) => ({
+    date: normalizeDate(r[idx.date]),
+    time: (r[idx.time] || '').trim().slice(0, 5).replace('.', ':'),
+    home: (r[idx.home] || '').trim(),
+    away: idx.away >= 0 ? (r[idx.away] || '').trim() : '',
+    field: idx.field >= 0 ? (r[idx.field] || '').trim() : '',
+    category: idx.category >= 0 ? (r[idx.category] || '').trim() : '',
+    duration: 90,
+  })).filter((m) => m.date && /^\d{1,2}:\d{2}$/.test(m.time) && m.home);
+}
+
+export function toCSV(rows) {
+  const esc = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return rows.map((r) => r.map(esc).join(';')).join('\r\n');
+}
+
+// ---------- Meldingen (zelfde regels als de database-triggers in supabase/schema.sql) ----------
+
+export function matchLabel(m) {
+  const [, mo, d] = m.date.split('-');
+  return `${d}-${mo} ${m.time} ${m.home}${m.away ? ` – ${m.away}` : ''}${m.field ? `, ${m.field}` : ''}`;
+}
+
+// old/neu are the match before and after a change; neu = null when the match is deleted.
+export function matchChangeNotifications(old, neu) {
+  const out = [];
+  const note = (referee_id, kind, title, body, m) => out.push({ referee_id, to_planners: false, kind, title, body, match_id: neu?.id || null, date: m.date });
+  if (!neu) {
+    if (old.published && old.referee_id) note(old.referee_id, 'cancelled', 'Wedstrijd vervallen', matchLabel(old), old);
+    return out;
+  }
+  if (old.published && old.referee_id && (neu.referee_id !== old.referee_id || !neu.published)) {
+    note(old.referee_id, 'withdrawn', 'Aanstelling ingetrokken', matchLabel(old), old);
+  } else if (old.published && neu.published && neu.referee_id === old.referee_id
+    && (neu.date !== old.date || neu.time !== old.time || (neu.field || '') !== (old.field || ''))) {
+    note(neu.referee_id, 'changed', 'Wedstrijd gewijzigd', `${matchLabel(neu)} (was ${matchLabel(old)})`, neu);
+  }
+  if (neu.published && neu.referee_id && (!old.published || old.referee_id !== neu.referee_id)) {
+    note(neu.referee_id, 'assigned', 'Je bent aangesteld', matchLabel(neu), neu);
+  }
+  return out;
+}
+
+// A referee marks a day unavailable while already assigned that day → note for planners.
+export function unavailableNotification(prev, row, matches, refereeName) {
+  if (row.available || (prev && !prev.available)) return null;
+  const n = matches.filter((m) => m.referee_id === row.referee_id && m.date === row.date).length;
+  if (!n) return null;
+  const [, mo, d] = row.date.split('-');
+  return {
+    referee_id: null, to_planners: true, kind: 'unavailable', date: row.date, match_id: null,
+    title: `${refereeName} heeft zich afgemeld`,
+    body: `Afgemeld voor ${d}-${mo}, maar aangesteld bij ${n} wedstrijd(en).`,
+  };
+}
+
+// Why the referee assigned to a match can no longer do it (null when fine).
+export function assignmentIssue(m, data) {
+  if (!m.referee_id || m.external_ref) return null;
+  const c = candidates(m, data).find((x) => x.referee.id === m.referee_id);
+  if (!c) return ['Niet meer actief'];
+  return c.status === 'no' ? c.reasons.filter((r) => !/graag|liever/i.test(r)) : null;
+}
