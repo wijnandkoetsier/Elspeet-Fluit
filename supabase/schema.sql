@@ -41,6 +41,22 @@ create table if not exists public.matches (
   created_at timestamptz default now()
 );
 create index if not exists matches_date_idx on public.matches (date);
+-- Wedstrijden uit Sportlink (zie hosting/sportlink-sync.php): herkend aan de Sportlink-wedstrijdcode.
+alter table public.matches add column if not exists sportlink_code text unique;
+alter table public.matches add column if not exists source text not null default 'manual';
+
+-- Logboek van de Sportlink-synchronisatie (laatste run zichtbaar voor planners).
+create table if not exists public.sync_runs (
+  id uuid primary key default gen_random_uuid(),
+  source text not null default 'sportlink',
+  at timestamptz not null default now(),
+  ok boolean not null,
+  added int not null default 0,
+  updated int not null default 0,
+  removed int not null default 0,
+  total int not null default 0,
+  message text
+);
 
 create table if not exists public.availability (
   id uuid primary key default gen_random_uuid(),
@@ -223,6 +239,7 @@ alter table public.matches enable row level security;
 alter table public.availability enable row level security;
 alter table public.notifications enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.sync_runs enable row level security;
 
 -- Scheidsrechters zien alleen hun eigen gegevens; planners zien alles.
 drop policy if exists "profiles read" on public.profiles;
@@ -264,6 +281,10 @@ create policy "notifications read" on public.notifications for select to authent
   using (referee_id = my_referee_id() or (to_planners and is_planner()));
 create policy "notifications mark read" on public.notifications for update to authenticated
   using (referee_id = my_referee_id() or (to_planners and is_planner()));
+
+drop policy if exists "sync runs read" on public.sync_runs;
+create policy "sync runs read" on public.sync_runs for select to authenticated using (is_planner());
+-- Schrijven gebeurt alleen door de synchronisatie zelf, met de service role-sleutel (die RLS overslaat).
 
 drop policy if exists "push own" on public.push_subscriptions;
 create policy "push own" on public.push_subscriptions for all to authenticated

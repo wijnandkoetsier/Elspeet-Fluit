@@ -13,7 +13,8 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - **Meldingen** bij een aanstelling, wijziging, intrekking of vervallen wedstrijd, ook als pushmelding op de telefoon
 
 **Planner**
-- Wedstrijden toevoegen of importeren via CSV (bijv. export uit Sportlink)
+- Thuiswedstrijden **automatisch uit Sportlink** (Club.Dataservice), elk uur bijgewerkt; of handmatig/CSV
+- Speelduur per categorie automatisch ingevuld (bijv. JO9 45 min, JO13 65 min, senioren 105 min)
 - Wedstrijden markeren waarvoor de KNVB zelf aanstelt
 - Per wedstrijd een gerangschikte kandidatenlijst: beschikbaarheid, tijdconflicten, maximum per dag, voorkeuren en aantal wedstrijden dit seizoen
 - **Voorstel maken** vult de hele speeldag automatisch in als concept
@@ -93,6 +94,37 @@ Meldingen staan altijd in het tabblad **Meldingen**. Voor een melding op het ver
 4. Ga in Supabase naar **Database → Webhooks → Create a new hook**: tabel `notifications`, event **Insert**, type **Supabase Edge Functions**, functie `send-push`.
 5. Iedereen kan daarna bij **Meldingen** op **Meldingen aanzetten** tikken. Op de iPhone werkt dit alleen als de app op het beginscherm staat (iOS 16.4 of nieuwer).
 
+### 6. Sportlink koppelen (via je TransIP-hosting)
+De app haalt de thuiswedstrijden op via een klein PHP-bestand op je eigen hosting. Zo blijft de Sportlink-clientcode geheim. Elk uur worden:
+- nieuwe wedstrijden **toegevoegd**,
+- gewijzigde datum, tijd, tegenstander of veld **bijgewerkt**,
+- wedstrijden die uit het Sportlink-programma verdwijnen (afgelast, verplaatst buiten de periode) **verwijderd**. Een aangestelde scheidsrechter krijgt daarvan een melding.
+
+Een wedstrijd die je eerder met de hand of via CSV invoerde (zelfde datum, tijd en thuisteam) wordt gekoppeld in plaats van dubbel toegevoegd; de aangestelde scheidsrechter blijft staan.
+
+**Stappen**
+
+1. Voer [`supabase/schema.sql`](supabase/schema.sql) opnieuw uit in de SQL Editor (veilig om te herhalen).
+2. Kopieer [`hosting/elspeet-fluit-config.example.php`](hosting/elspeet-fluit-config.example.php) naar `elspeet-fluit-config.php` en vul in:
+   - `sportlink_client_id`: je clientcode
+   - `supabase_url`, `supabase_anon_key` en `supabase_service_key` (*service_role*): Supabase → **Project Settings → API**
+   - `sync_token`: een zelfgekozen lange geheime code (minimaal 32 tekens)
+3. Upload via SFTP (TransIP-controlepaneel → **Webhosting → Site → SFTP/SSH** voor de inloggegevens):
+   ```
+   /                                   ← elspeet-fluit-config.php  (NIET in www!)
+   /www/elspeet-fluit/sportlink-sync.php
+   ```
+4. Test in je browser: `https://jouwdomein.nl/elspeet-fluit/sportlink-sync.php?token=JOUW_SYNC_TOKEN&mode=test`
+   Je ziet hoeveel wedstrijden Sportlink teruggeeft, hoe ze in de app komen, en of het configuratiebestand veilig staat. Er wordt niets gewijzigd.
+5. Zet in [`js/config.js`](js/config.js) `SPORTLINK_SYNC_URL` op `https://jouwdomein.nl/elspeet-fluit/sportlink-sync.php` (voor de knop **Nu ophalen uit Sportlink** bij **Wedstrijden**). Staat de app niet op `https://wijnandkoetsier.github.io`, zet dan het juiste adres in `allowed_origins`.
+6. Automatisch elk uur: TransIP-controlepaneel → **Webhosting → Geavanceerd → Cronjobs → + Toevoegen**
+   - URL: `https://jouwdomein.nl/elspeet-fluit/sportlink-sync.php?token=JOUW_SYNC_TOKEN`
+   - Frequentie: elk uur (bijv. minuut `5`, uur `*`)
+
+> Het bestand `elspeet-fluit-config.php` staat in `.gitignore` en hoort nooit in GitHub. De *service_role*-sleutel geeft volledige toegang tot de database.
+
+Wedstrijden waarvoor de KNVB zelf aanstelt, vink je bij de wedstrijd aan (**KNVB stelt scheidsrechter aan**); die keuze blijft bij elke synchronisatie behouden.
+
 ## CSV-import
 
 Eerste regel bevat de kolomnamen; scheidingsteken `;` of `,`. Datum als `dd-mm-jjjj` of `jjjj-mm-dd`.
@@ -114,11 +146,11 @@ datum;tijd;thuis;uit;veld;categorie
 | `js/store-supabase.js` | Gedeelde opslag via Supabase |
 | `supabase/schema.sql` | Tabellen, triggers (meldingen) en beveiliging |
 | `supabase/functions/send-push/` | Verstuurt pushmeldingen bij nieuwe meldingen |
+| `hosting/sportlink-sync.php` | Sportlink-koppeling voor je eigen hosting (PHP 8.1+) |
 | `sw.js`, `manifest.webmanifest` | Installeerbaar, offline te openen, ontvangt pushmeldingen |
 
 Geen build-stap nodig: alles is gewone HTML/CSS/JavaScript.
 
 ## Mogelijke vervolgstappen
-- Automatische import via de Sportlink Club.Dataservice
 - Meerdere clubs / meerdere planners met eigen teams
 - Clublogo en -kleuren instelbaar

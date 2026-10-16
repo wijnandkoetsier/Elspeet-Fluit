@@ -108,6 +108,24 @@ export function availabilityDates(matches, today = new Date(), weeks = 4) {
   return [...set].sort();
 }
 
+// Category from a team name: "Elspeet JO11-1" → JO11, "Elspeet 35+1" → Veteranen. Same rules as hosting/sportlink-sync.php.
+export function categoryFromTeam(team) {
+  const m = String(team || '').match(/\b([JM]O)\s?(\d{1,2})\b/i);
+  if (m) return m[1].toUpperCase() + m[2];
+  if (/(35\+|45\+|vet|VE\d)/i.test(team || '')) return 'Veteranen';
+  return 'Senioren';
+}
+
+// Playing time incl. half-time break in minutes (KNVB match lengths). Same table as default_duration() in PHP.
+export function defaultDuration(category) {
+  const m = String(category || '').match(/^[JM]O(\d{1,2})$/);
+  if (m) {
+    const age = Number(m[1]);
+    return age <= 9 ? 45 : age <= 11 ? 55 : age <= 13 ? 65 : age <= 15 ? 75 : age <= 17 ? 85 : 105;
+  }
+  return category === 'Veteranen' ? 80 : 105;
+}
+
 // Minimal CSV parser (handles quotes, ; or , separators).
 export function parseCSV(text) {
   const firstLine = text.split(/\r?\n/)[0] || '';
@@ -160,15 +178,19 @@ export function csvMatches(text) {
   if (idx.date < 0 || idx.time < 0 || idx.home < 0) {
     throw new Error('CSV mist kolommen. Nodig: datum, tijd, thuis (optioneel: uit, veld, categorie).');
   }
-  return rows.slice(1).map((r) => ({
-    date: normalizeDate(r[idx.date]),
-    time: (r[idx.time] || '').trim().slice(0, 5).replace('.', ':'),
-    home: (r[idx.home] || '').trim(),
-    away: idx.away >= 0 ? (r[idx.away] || '').trim() : '',
-    field: idx.field >= 0 ? (r[idx.field] || '').trim() : '',
-    category: idx.category >= 0 ? (r[idx.category] || '').trim() : '',
-    duration: 90,
-  })).filter((m) => m.date && /^\d{1,2}:\d{2}$/.test(m.time) && m.home);
+  return rows.slice(1).map((r) => {
+    const home = (r[idx.home] || '').trim();
+    const category = (idx.category >= 0 && (r[idx.category] || '').trim()) || categoryFromTeam(home);
+    return {
+      date: normalizeDate(r[idx.date]),
+      time: (r[idx.time] || '').trim().slice(0, 5).replace('.', ':'),
+      home,
+      away: idx.away >= 0 ? (r[idx.away] || '').trim() : '',
+      field: idx.field >= 0 ? (r[idx.field] || '').trim() : '',
+      category,
+      duration: defaultDuration(category),
+    };
+  }).filter((m) => m.date && /^\d{1,2}:\d{2}$/.test(m.time) && m.home);
 }
 
 export function toCSV(rows) {
