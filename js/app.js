@@ -1143,7 +1143,7 @@ function meer(view) {
   view.innerHTML = `
     <section class="card day-list">
       <header class="day-head"><h2>Ik fluit zelf ook</h2></header>
-      ${me ? link('mijn', ICONS.whistle, 'Mijn fluiten', 'Je eigen aanstellingen en seizoenscijfers')
+      ${me ? link('mijn', ICONS.whistle, 'Mijn fluiten', 'De wedstrijden die je zelf fluit')
         + link('beschikbaarheid', ICONS.calendar, 'Mijn beschikbaarheid', 'Geef door wanneer je zelf kunt fluiten')
         : '<p class="muted list-empty">Je staat nog niet als scheidsrechter in de lijst.</p>'}
     </section>
