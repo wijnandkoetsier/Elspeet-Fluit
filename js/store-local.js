@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v4';
+const KEY = 'scheidsapp-demo-v5';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -14,10 +14,10 @@ function seed() {
   const d2 = iso(next);
   const referees = [
     { id: 'r1', name: 'Anouk de Vries', email: 'anouk@example.nl', pref_categories: ['O11', 'O12'], avoid_categories: [], active: true, user_id: 'u1' },
-    { id: 'r2', name: 'Bram Jansen', email: 'bram@example.nl', pref_categories: ['O15', 'O17'], avoid_categories: ['O8'], active: true, user_id: 'u2' },
+    { id: 'r2', name: 'Bram Jansen', email: 'bram@example.nl', pref_categories: ['O15', 'O17'], avoid_categories: [], active: true, user_id: 'u2' },
     { id: 'r3', name: 'Chris Bakker', email: '', pref_categories: [], avoid_categories: [], active: true, user_id: null },
     // Daan is planner én scheidsrechter.
-    { id: 'r4', name: 'Daan Visser', email: 'daan@example.nl', pref_categories: ['Senioren'], avoid_categories: [], active: true, user_id: 'u4', is_planner: true },
+    { id: 'r4', name: 'Daan Visser', email: 'daan@example.nl', pref_categories: ['1e', '2e'], avoid_categories: [], active: true, user_id: 'u4', is_planner: true },
   ];
   const mk = (date, time, home, away, field, category) => ({ id: uid(), date, time, duration: 60, home, away, field, category, referee_id: null, published: false, external_ref: false });
   const matches = [
@@ -27,7 +27,7 @@ function seed() {
     mk(d1, '11:30', 'Elspeet O15-1', 'Rood Wit O15-1', 'Veld 1', 'O15'),
     mk(d1, '13:00', 'Elspeet O17-1', 'Fortuna O17-2', 'Veld 1', 'O17'),
     mk(d2, '09:00', 'Elspeet O11-2', 'Zwart Geel O11-1', 'Veld 1', 'O11'),
-    mk(d2, '14:30', 'Elspeet 1', 'VV Oost 1', 'Hoofdveld', 'Senioren'),
+    mk(d2, '14:30', 'Elspeet 1', 'VV Oost 1', 'Hoofdveld', '1e'),
   ];
   matches[6].duration = 105;
   matches[6].external_ref = true; // KNVB stelt aan

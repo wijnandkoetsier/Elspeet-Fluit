@@ -179,15 +179,21 @@ function pick(array $r, array $keys): ?string
 
 /**
  * Categorie uit de teamnaam, in de KNVB-naamgeving: "Elspeet O13-1JM" → O13, oude namen als
- * "JO11-1" of "MO15-2" → O11 / O15, "Elspeet VR1" → Vrouwen, "Elspeet 35+1" → Veteranen.
+ * "JO11-1" of "MO15-2" → O11 / O15, "Elspeet VR1" → VR1, "Elspeet VR30+1" → VR30+,
+ * "Elspeet 35+1" → 35+, "Elspeet 7x7 1" → 7x7, "Elspeet 2" → 2e.
  * Zelfde regels als categoryFromTeam() in js/logic.js.
  */
 function category_from_team(string $team): string
 {
     if (preg_match('/\b[JM]?O\s?(\d{1,2})(?=-|\b|[A-Z])/i', $team, $m)) return 'O' . (int) $m[1];
-    if (preg_match('/\bVR\s?\d|vrouwen|dames/i', $team)) return 'Vrouwen';
-    if (preg_match('/(35\+|45\+|vet|VE\d)/i', $team)) return 'Veteranen';
-    return 'Senioren';
+    if (preg_match('/30\+/', $team)) return 'VR30+';
+    if (preg_match('/\bVR\s?\d|vrouwen|dames/i', $team)) return 'VR1';
+    if (preg_match('/45\+/', $team)) return '45+';
+    if (preg_match('/35\+|vet|VE\d/i', $team)) return '35+';
+    if (preg_match('/7\s?[x×]\s?7/iu', $team)) return '7x7';
+    // "Elspeet 2" of "Elspeet 2 (zon)" → 2e
+    if (preg_match('/(\d+)\s*(?:\([^)]*\))?\s*$/', $team, $m)) return (int) $m[1] . 'e';
+    return '1e';
 }
 
 /** Speelduur incl. rust in minuten (KNVB-speeltijden). Zelfde tabel als defaultDuration() in js/logic.js. */
@@ -204,7 +210,8 @@ function default_duration(string $category): int
             default => 105,
         };
     }
-    return $category === 'Veteranen' ? 80 : 105;
+    if ($category === '7x7') return 60;
+    return in_array($category, ['35+', '45+', 'VR30+'], true) ? 80 : 105;
 }
 
 /** "veld 1-hoofdveld" → "Veld 1". Zelfde regel als fieldName() in js/logic.js. */
@@ -379,7 +386,8 @@ function sync(array $c, array $feed): array
             foreach (['date', 'time', 'home', 'away', 'field', 'match_type', 'sportlink_referee'] as $k) {
                 if ((string) ($old[$k] ?? '') !== (string) $f[$k]) $patch[$k] = $f[$k];
             }
-            if (empty($old['category'])) $patch['category'] = $f['category'];
+            // Leeg, of nog een oude categorie van vóór de indeling in teams.
+            if (empty($old['category']) || in_array($old['category'], ['Senioren', 'Veteranen', 'Vrouwen'], true)) $patch['category'] = $f['category'];
             if ($knvb && empty($old['external_ref'])) $patch['external_ref'] = true;
             if ($refId && ($old['referee_id'] ?? null) !== $refId) {
                 $patch += ['referee_id' => $refId, 'published' => true, 'referee_from_sportlink' => true];
