@@ -1171,6 +1171,8 @@ function base64UrlToBytes(b64) {
 // ---------- Meer (planner) ----------
 // ---------- Planner: overzicht ----------
 // Short explanation, the tabs with what needs attention, and the former "Meer" items.
+// The club logo as the page already has it (also works in the single-file demo).
+const LOGO = () => document.querySelector('.brand img')?.src || 'icons/logo.png';
 const menuLink = (href, icon, title, sub, right = '') => `
   <a class="mrow menu" href="#${href}"><span class="micon">${icon}</span>
     <div class="info"><b>${title}</b><div class="sub">${sub}</div>${right && right.replace(/<[^>]+>/g, '') ? `<div class="menu-pills">${right}</div>` : ''}</div><span class="chev" aria-hidden="true">›</span></a>`;
@@ -1189,14 +1191,25 @@ function plannerOverzicht(view) {
   const pill = (n, text, cls = 'open') => (n ? `<span class="pill ${cls}">${n} ${text}</span>` : '');
 
   view.innerHTML = `
-    <h2 class="hello">Hoi ${esc(store.user.name.split(' ')[0])}</h2>
+    <section class="hero">
+      <img class="hero-logo" src="${esc(LOGO())}" alt="Logo VV Elspeet">
+      <div class="hero-text">
+        <small>${esc(CLUB_NAME)} · planner</small>
+        <h2>Hoi ${esc(store.user.name.split(' ')[0])}</h2>
+        <p>Welkom bij ${esc(APP_NAME)}. Hier regel je wie er fluit: van de wedstrijden uit Sportlink tot de melding op de telefoon van de scheidsrechter.</p>
+      </div>
+    </section>
     <section class="card day-list">
       <header class="day-head"><h2>Zo werkt het</h2></header>
       <ol class="steps">
-        <li><b>Wedstrijden</b> komen elk uur uit Sportlink. Je kunt ze ook zelf toevoegen.</li>
-        <li><b>Scheidsrechters</b> geven hun beschikbaarheid en voorkeuren door, en kunnen zich aanbieden voor open wedstrijden.</li>
-        <li>In <b>Planning</b> wijs je per speeldag een scheidsrechter toe. Dat is eerst een concept.</li>
-        <li>Na <b>Publiceren</b> krijgt de scheidsrechter een melding en staat de wedstrijd bij Mijn fluiten.</li>
+        ${[
+          [ICONS.refresh, 'Wedstrijden binnenhalen', 'Elk uur automatisch uit Sportlink. Je kunt ook zelf wedstrijden toevoegen.'],
+          [ICONS.calendar, 'Beschikbaarheid', 'Scheidsrechters geven door wanneer ze kunnen en wat ze graag fluiten, en bieden zich aan voor open wedstrijden.'],
+          [ICONS.planning, 'Inplannen', 'In Planning wijs je per speeldag een scheidsrechter toe. Dat blijft een concept tot je publiceert.'],
+          [ICONS.bell, 'Publiceren', 'De scheidsrechter krijgt een melding en ziet de wedstrijd bij Mijn fluiten.'],
+        ].map(([icon, title, text], i) => `
+        <li><span class="step-dot" aria-hidden="true">${icon}<b>${i + 1}</b></span>
+          <div><b>${title}</b><p>${text}</p></div></li>`).join('')}
       </ol>
     </section>
     <section class="card day-list">
