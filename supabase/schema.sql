@@ -344,27 +344,28 @@ exception when others then null; end $$;
 --   3. update public.profiles set role = 'planner' where email = 'jij@voorbeeld.nl';
 -- Daarna kun je andere planners in de app aanwijzen (Scheidsen → naam → Planner).
 
--- Categorieën per team (senioren 1e–5e, 7x7, 35+, 45+; vrouwen VR1, VR30+) in plaats van
+-- Categorieën per team (senioren 1e–5e, 7x7, 35+, 40+; vrouwen VR1, VR30+) in plaats van
 -- Senioren/Veteranen/Vrouwen. Zelfde regels als categoryFromTeam() in js/logic.js. Eenmalig, mag vaker.
 update public.matches set category = case
     when home ~ '30\+' then 'VR30+'
     when home ~* '(\mvr\s?\d|vrouwen|dames)' then 'VR1'
-    when home ~ '45\+' then '45+'
+    when home ~ '4[05]\+' then '40+'
     when home ~* '(35\+|vet|ve\d)' then '35+'
     when home ~* '7\s?[x×]\s?7' then '7x7'
     when home ~ '\d+\s*(\([^)]*\))?\s*$' then (substring(home from '(\d+)\s*(?:\([^)]*\))?\s*$')::int)::text || 'e'
     else '1e' end
-  where category in ('Senioren', 'Veteranen', 'Vrouwen');
+  where category in ('Senioren', 'Veteranen', 'Vrouwen', '45+');
 
 create or replace function public.upgrade_categories(list text[]) returns text[]
 language sql immutable as $$
   select coalesce(array_agg(distinct c), '{}') from unnest(list) p,
     lateral unnest(case p
       when 'Senioren' then array['1e', '2e', '3e', '4e', '5e', '7x7']
-      when 'Veteranen' then array['35+', '45+']
+      when 'Veteranen' then array['35+', '40+']
+      when '45+' then array['40+']
       when 'Vrouwen' then array['VR1', 'VR30+']
       else array[p] end) c
 $$;
 update public.referees set pref_categories = public.upgrade_categories(pref_categories),
     avoid_categories = public.upgrade_categories(avoid_categories)
-  where pref_categories && array['Senioren', 'Veteranen', 'Vrouwen'] or avoid_categories && array['Senioren', 'Veteranen', 'Vrouwen'];
+  where pref_categories && array['Senioren', 'Veteranen', 'Vrouwen', '45+'] or avoid_categories && array['Senioren', 'Veteranen', 'Vrouwen', '45+'];
