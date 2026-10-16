@@ -103,14 +103,16 @@ const ROUTES = {
     ['meer', 'Meer', ICONS.more],
   ],
   referee: [
-    ['overzicht', 'Overzicht', ICONS.home],
     ['mijn', 'Mijn fluiten', ICONS.whistle],
     ['beschikbaarheid', 'Beschikbaar', ICONS.calendar],
+    ['overzicht', 'Overzicht', ICONS.home],
     ['meldingen', 'Meldingen', ICONS.bell],
     ['profiel', 'Instellingen', ICONS.settings],
   ],
 };
 const HIDDEN = { planner: { mijn: 'meer', beschikbaarheid: 'meer', profiel: 'meer' }, referee: {} };
+// The screen the app opens on (Overzicht sits in the middle of the tab bar for referees).
+const HOME = { planner: 'planning', referee: 'overzicht' };
 
 const unreadCount = () => state.data.notifications.filter((n) => !n.read_at).length;
 
@@ -129,7 +131,7 @@ function render() {
   const routes = ROUTES[role];
   const hidden = HIDDEN[role];
   let route = location.hash.replace(/^#\/?/, '');
-  if (!routes.some(([r]) => r === route) && !hidden[route]) route = routes[0][0];
+  if (!routes.some(([r]) => r === route) && !hidden[route]) route = HOME[role];
   const activeTab = hidden[route] || route;
   const unread = unreadCount();
   nav.innerHTML = routes.map(([r, label, icon]) =>
@@ -782,33 +784,27 @@ function overzicht(view) {
 }
 
 // ---------- Referee: mijn wedstrijden ----------
+// Only the matches this referee whistles: what's coming up, and what was already played this season.
 function mijn(view) {
   const me = store.user.referee_id;
   const today = todayISO();
   const mine = state.data.matches.filter((m) => m.referee_id === me && m.published)
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const upcoming = mine.filter((m) => m.date >= today);
-  const { start, end, label } = seasonOf(today);
-  const season = mine.filter((m) => m.date >= start && m.date <= end && m.date < today);
-  const perCat = {};
-  season.forEach((m) => { perCat[m.category || 'Overig'] = (perCat[m.category || 'Overig'] || 0) + 1; });
-  const todo = availabilityDates(state.data.matches).filter((d) => !state.data.availability.some((a) => a.referee_id === me && a.date === d));
+  const { start, label } = seasonOf(today);
+  const played = mine.filter((m) => m.date >= start && m.date < today).reverse();
+  const sub = (m) => [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>');
 
   view.innerHTML = `
-    <h2 class="hello">Hoi ${esc(store.user.name.split(' ')[0])}</h2>
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
-    ${todo.length ? `<a class="card warn tap block" href="#beschikbaarheid">📅 Vul je beschikbaarheid in voor ${todo.length} dag(en) →</a>` : ''}
     ${upcoming.length ? dayList('Komende wedstrijden', `<span class="pill done">${upcoming.length}</span>`,
       upcoming.map((m) => matchRow(m, {
-        sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
+        sub: sub(m),
         action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
       })).join(''))
-      : '<section class="card empty"><p>Nog geen gepubliceerde aanstellingen.</p></section>'}
-    <h3 class="day">Seizoen ${label}</h3>
-    <section class="card">
-      <div class="stats"><div><b>${season.length}</b><span>gefloten</span></div><div><b>${upcoming.length}</b><span>gepland</span></div></div>
-      ${Object.keys(perCat).length ? `<p class="muted">${Object.entries(perCat).map(([c, n]) => `${esc(c)}: ${n}`).join(' · ')}</p>` : ''}
-    </section>`;
+      : '<section class="card empty"><p>Je hebt nog geen wedstrijden om te fluiten.</p></section>'}
+    ${played.length ? dayList(`Gefloten seizoen ${label}`, `<span class="pill">${played.length}</span>`,
+      played.map((m) => matchRow(m, { sub: sub(m) })).join('')) : ''}`;
   view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () =>
     calendarSheet(state.data.matches.find((x) => x.id === b.dataset.ics)));
 }
