@@ -49,19 +49,8 @@ async function boot() {
   store.onChange(refresh);
   window.addEventListener('hashchange', render);
   await refresh().catch(() => {});
-  hideSplash();
 }
 
-// Start screen: logo with a spinning ball, at least 2 seconds after the app was opened.
-const SPLASH_MS = 2000;
-function hideSplash() {
-  const el = $('#splash');
-  if (!el) return;
-  setTimeout(() => {
-    el.classList.add('gone');
-    setTimeout(() => el.remove(), 400);
-  }, Math.max(0, SPLASH_MS - performance.now()));
-}
 
 async function refresh() {
   if (store.user) {
