@@ -1,5 +1,5 @@
 // Service worker: app shell offline beschikbaar. Data komt altijd vers van het netwerk.
-const CACHE = 'scheidsapp-v4';
+const CACHE = 'scheidsapp-v5';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/logic.js', 'js/config.js', 'js/store-local.js', 'js/store-supabase.js',
@@ -19,8 +19,10 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  // cache: 'no-cache' revalidates with the server, so a new release is picked up immediately
+  // instead of waiting for GitHub Pages' 10-minute browser cache.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
