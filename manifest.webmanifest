@@ -1,7 +1,7 @@
 {
-  "name": "Scheidsrechters VV Elspeet",
-  "short_name": "VVE Scheids",
-  "description": "Planning en beschikbaarheid van de clubscheidsrechters van VV Elspeet",
+  "name": "Elspeet Fluit",
+  "short_name": "Elspeet Fluit",
+  "description": "Elspeet Fluit: planning en beschikbaarheid van de clubscheidsrechters van VV Elspeet",
   "lang": "nl",
   "start_url": "./",
   "scope": "./",

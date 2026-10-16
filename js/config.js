@@ -6,5 +6,6 @@ export const SUPABASE_ANON_KEY = '';
 // Publieke VAPID-sleutel voor pushmeldingen (zie README, stap Pushmeldingen). Leeg = geen push.
 export const VAPID_PUBLIC_KEY = '';
 
+export const APP_NAME = 'Elspeet Fluit';
 export const CLUB_NAME = 'VV Elspeet';
 export const CATEGORIES = ['JO8', 'JO9', 'JO10', 'JO11', 'JO12', 'JO13', 'JO14', 'JO15', 'JO17', 'JO19', 'MO13', 'MO15', 'MO17', 'Senioren', 'Veteranen'];

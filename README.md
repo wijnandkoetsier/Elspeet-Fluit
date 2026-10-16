@@ -1,6 +1,6 @@
-# Scheidsrechtersapp VV Elspeet
+# Elspeet Fluit
 
-Webapp voor VV Elspeet om clubscheidsrechters te plannen. Werkt in de browser en is te installeren op de telefoon (PWA), zonder App Store.
+De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen vanaf je telefoon. Werkt in de browser en is te installeren op de telefoon (PWA), zonder App Store.
 
 ## Wat kan het?
 
@@ -45,7 +45,7 @@ npx http-server -c-1 .
 3. Ga naar **Authentication → URL Configuration** en zet de **Site URL** op het adres waar de app komt te staan (zie stap 2), bijvoorbeeld `https://<gebruiker>.github.io/READ.md/`.
 4. Ga naar **Authentication → Email Templates → Magic Link** en zet de code in de e-mail, zodat inloggen ook werkt vanuit de app op het beginscherm. Bijvoorbeeld:
    ```html
-   <h2>Inloggen bij de scheidsrechtersapp</h2>
+   <h2>Inloggen bij Elspeet Fluit</h2>
    <p>Je code is: <strong style="font-size:24px">{{ .Token }}</strong></p>
    <p>Of tik op deze link: <a href="{{ .ConfirmationURL }}">inloggen</a></p>
    ```

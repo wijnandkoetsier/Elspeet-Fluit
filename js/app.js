@@ -1,4 +1,4 @@
-import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, CLUB_NAME, CATEGORIES } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, APP_NAME, CLUB_NAME, CATEGORIES } from './config.js';
 import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
@@ -40,8 +40,9 @@ async function boot() {
   } else {
     store = createLocalStore();
   }
-  $('#club').textContent = CLUB_NAME;
-  document.title = `Scheidsrechters · ${CLUB_NAME}`;
+  $('#app-name').textContent = APP_NAME;
+  $('#club').textContent = `${CLUB_NAME} · scheidsrechters`;
+  document.title = APP_NAME;
   try { await store.init(); } catch (e) { toast(e.message, true); }
   store.onChange(refresh);
   window.addEventListener('hashchange', render);
@@ -436,7 +437,7 @@ function availEditor(refereeId, day) {
 function remindLink(refs, day) {
   const bcc = refs.map((r) => r.email).filter(Boolean).join(',');
   const subject = `Beschikbaarheid ${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}`;
-  const body = `Hoi,\n\nWil je je beschikbaarheid voor ${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })} invullen in de scheidsrechtersapp?\n\n${location.origin + location.pathname}\n\nBedankt!`;
+  const body = `Hoi,\n\nWil je je beschikbaarheid voor ${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })} invullen in ${APP_NAME}?\n\n${location.origin + location.pathname}\n\nBedankt!`;
   return `mailto:?bcc=${encodeURIComponent(bcc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
@@ -654,7 +655,7 @@ function mijn(view) {
 function ics(m) {
   const dt = (date, min) => `${date.replace(/-/g, '')}T${fromMin(min).replace(':', '')}00`;
   return [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//scheidsapp//NL', 'BEGIN:VEVENT',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${APP_NAME}//NL`, 'BEGIN:VEVENT',
     `UID:${m.id}@scheidsapp`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     `DTSTART;TZID=Europe/Amsterdam:${dt(m.date, Math.max(0, toMin(m.time) - 30))}`,
     `DTEND;TZID=Europe/Amsterdam:${dt(m.date, Math.min(1439, matchEnd(m)))}`,
