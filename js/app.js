@@ -374,6 +374,41 @@ function planning(view) {
     'Planning gepubliceerd. Scheidsrechters zien hun aanstelling nu in de app.');
 }
 
+// Kick-off times on a day (the choices when giving availability).
+const kickoffTimes = (day) => [...new Set(state.data.matches
+  .filter((m) => m.date === day && !m.external_ref).map((m) => m.time))].sort();
+
+// "Op welke tijden kun je?" chips and the max-per-day stepper; empty selection = all times.
+function availPicker(day, a) {
+  const times = kickoffTimes(day);
+  const sel = new Set(a?.times || []);
+  const max = a?.max_matches || 0;
+  return `
+    <div class="av-pick">
+      <p class="av-label">Op welke aanvangstijden kun je? <small class="muted">${sel.size ? '' : 'Niets gekozen = alle tijden'}</small></p>
+      <div class="chips wrap">${times.map((t) => `<button type="button" class="chip time ${sel.has(t) ? 'on' : ''}" data-time="${t}" aria-pressed="${sel.has(t)}">${t}</button>`).join('')
+        || '<span class="muted">Nog geen wedstrijden op deze dag.</span>'}</div>
+      <div class="av-max"><span class="av-label">Max. wedstrijden deze dag</span>
+        <div class="stepper"><button type="button" data-step="-1" aria-label="Minder" ${max ? '' : 'disabled'}>−</button>
+          <b>${max || '–'}</b><button type="button" data-step="1" aria-label="Meer" ${max >= Math.max(times.length, 1) ? 'disabled' : ''}>+</button></div></div>
+    </div>`;
+}
+
+// Apply a tap in the picker to an availability row; returns the new { times, max_matches }.
+function availPickerChange(day, a, btn) {
+  const valid = kickoffTimes(day);
+  let times = (a?.times || []).filter((t) => valid.includes(t));
+  let max = a?.max_matches || 0;
+  if (btn.dataset.time) {
+    const t = btn.dataset.time;
+    times = times.includes(t) ? times.filter((x) => x !== t) : [...times, t].sort();
+  } else max = Math.max(0, Math.min(Math.max(valid.length, 1), max + Number(btn.dataset.step)));
+  return { times, max_matches: max || null, start_time: '', end_time: '' };
+}
+
+const availHours = (a) => (a.times?.length ? a.times.join(', ')
+  : a.start_time || a.end_time ? `${a.start_time || 'begin'} – ${a.end_time || 'eind'}` : 'Alle tijden');
+
 // Availability of every active referee on a day, grouped.
 function dayAvailability(day) {
   const { referees, availability, matches } = state.data;
@@ -384,13 +419,14 @@ function dayAvailability(day) {
     const entry = { r, a, assigned };
     (a ? (a.available ? groups.yes : groups.no) : groups.none).push(entry);
   }
-  groups.yes.sort((x, y) => (x.a.start_time || '').localeCompare(y.a.start_time || '') || x.r.name.localeCompare(y.r.name));
+  const first = (a) => a.times?.[0] || a.start_time || '';
+  groups.yes.sort((x, y) => first(x.a).localeCompare(first(y.a)) || x.r.name.localeCompare(y.r.name));
   return groups;
 }
 
 function availRow({ r, a, assigned }, editable = false) {
   const hours = a?.available
-    ? (a.start_time || a.end_time ? `${a.start_time || 'begin'} – ${a.end_time || 'eind'}` : 'Hele dag')
+    ? availHours(a)
     : a ? 'Niet beschikbaar' : 'Nog niets ingevuld';
   const extra = [a?.max_matches ? `max ${a.max_matches}` : '', assigned ? `fluit ${assigned}×` : ''].filter(Boolean).join(' · ');
   const full = a?.available && a.max_matches && assigned >= a.max_matches;
@@ -442,36 +478,31 @@ function availEditor(refereeId, day) {
   const r = state.data.referees.find((x) => x.id === refereeId);
   const a = state.data.availability.find((x) => x.referee_id === refereeId && x.date === day);
   let choice = a ? (a.available ? 'yes' : 'no') : 'none';
+  let pick = { times: a?.times || [], max_matches: a?.max_matches || null };
   sheet(`
     <h3>${esc(r.name)}</h3>
     <p class="muted">${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
     <div class="seg three" id="av-choice">
       <button data-c="yes">✓ Beschikbaar</button><button data-c="no">✕ Niet</button><button data-c="none">Onbekend</button>
     </div>
-    <div class="row small" id="av-times">
-      <label>Van<input type="time" id="av-start" value="${esc(a?.start_time || '')}"></label>
-      <label>Tot<input type="time" id="av-end" value="${esc(a?.end_time || '')}"></label>
-      <label>Max<select id="av-max">${['', 1, 2, 3, 4].map((x) => `<option value="${x}" ${String(a?.max_matches ?? '') === String(x) ? 'selected' : ''}>${x || '–'}</option>`).join('')}</select></label>
-    </div>
-    <p class="field-error" id="av-err" hidden></p>
+    <div id="av-times"></div>
     <button class="btn primary block" id="av-save">Opslaan</button>`, (el, close) => {
     const paint = () => {
       el.querySelectorAll('[data-c]').forEach((b) => { b.className = b.dataset.c === choice ? `on ${choice}` : ''; });
-      $('#av-times', el).hidden = choice !== 'yes';
+      const box = $('#av-times', el);
+      box.hidden = choice !== 'yes';
+      box.innerHTML = availPicker(day, pick);
+      box.querySelectorAll('[data-time], [data-step]').forEach((b) => b.onclick = () => { pick = availPickerChange(day, pick, b); paint(); });
     };
     el.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { choice = b.dataset.c; paint(); });
     paint();
     $('#av-save', el).onclick = () => {
-      const start = $('#av-start', el).value, end = $('#av-end', el).value;
-      if (choice === 'yes' && start && end && end <= start) {
-        const err = $('#av-err', el); err.textContent = 'De eindtijd moet later zijn dan de begintijd.'; err.hidden = false; return;
-      }
       close();
       if (choice === 'none') return act(() => store.deleteAvailability(refereeId, day), 'Beschikbaarheid gewist');
       act(() => store.saveAvailability({
         referee_id: refereeId, date: day, available: choice === 'yes',
-        start_time: choice === 'yes' ? start : '', end_time: choice === 'yes' ? end : '',
-        max_matches: choice === 'yes' ? (Number($('#av-max', el).value) || null) : null,
+        start_time: '', end_time: '',
+        times: choice === 'yes' ? pick.times : [], max_matches: choice === 'yes' ? pick.max_matches : null,
       }), `Opgeslagen voor ${r.name}`);
     };
   });
@@ -934,12 +965,7 @@ function beschikbaarheid(view) {
             <button class="${a?.available ? 'on yes' : ''}" data-set="yes">✓ Beschikbaar</button>
             <button class="${a && !a.available ? 'on no' : ''}" data-set="no">✕ Niet</button>
           </div>
-          ${a?.available ? `
-            <div class="row small">
-              <label>Van<input type="time" data-f="start_time" value="${esc(a.start_time || '')}"></label>
-              <label>Tot<input type="time" data-f="end_time" value="${esc(a.end_time || '')}"></label>
-              <label>Max<select data-f="max_matches">${['', 1, 2, 3, 4].map((x) => `<option value="${x}" ${String(a.max_matches ?? '') === String(x) ? 'selected' : ''}>${x || '–'}</option>`).join('')}</select></label>
-            </div>` : ''}
+          ${a?.available ? availPicker(d, a) : ''}
         </section>`;
     }).join('')}
     <section class="card">
@@ -951,7 +977,7 @@ function beschikbaarheid(view) {
 
   view.querySelectorAll('.avail').forEach((card) => {
     const d = card.dataset.date;
-    const base = () => av(d) || { referee_id: me, date: d, start_time: '', end_time: '', max_matches: null };
+    const base = () => av(d) || { referee_id: me, date: d, start_time: '', end_time: '', times: [], max_matches: null };
     card.querySelectorAll('[data-set]').forEach((b) => b.onclick = async () => {
       const yes = b.dataset.set === 'yes';
       if (!yes && state.data.matches.some((m) => m.date === d && m.referee_id === me)
@@ -959,15 +985,7 @@ function beschikbaarheid(view) {
       const row = { ...base(), available: yes };
       saveAv(row);
     });
-    card.querySelectorAll('[data-f]').forEach((inp) => inp.onchange = () => {
-      const row = { ...base(), [inp.dataset.f]: inp.dataset.f === 'max_matches' ? (Number(inp.value) || null) : inp.value };
-      if (row.start_time && row.end_time && row.end_time <= row.start_time) {
-        toast('De eindtijd moet later zijn dan de begintijd.', true);
-        inp.value = base()[inp.dataset.f] || '';
-        return;
-      }
-      saveAv(row);
-    });
+    card.querySelectorAll('[data-time], [data-step]').forEach((b) => b.onclick = () => saveAv({ ...base(), ...availPickerChange(d, base(), b) }));
   });
   $('#abs').onclick = () => {
     const from = $('#abs-from').value, to = $('#abs-to').value;
