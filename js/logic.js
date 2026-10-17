@@ -62,6 +62,7 @@ export function candidates(match, { referees, availability, matches, offers = []
       } else {
         if (av.start_time && toMin(av.start_time) > start) { status = 'no'; reasons.push(`Pas vanaf ${av.start_time}`); }
         if (av.end_time && toMin(av.end_time) < end) { status = 'no'; reasons.push(`Tot ${av.end_time}`); }
+        if (av.times?.length && !av.times.includes(match.time)) { status = 'no'; reasons.push(`Kan niet om ${match.time}`); }
         if (av.max_matches && sameDay.length >= av.max_matches) { status = 'no'; reasons.push(`Max ${av.max_matches} per dag bereikt`); }
       }
       if (conflict) { status = 'no'; reasons.push(`Fluit al ${conflict.time} ${conflict.home}`); }

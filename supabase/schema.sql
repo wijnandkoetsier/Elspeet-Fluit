@@ -78,6 +78,8 @@ create table if not exists public.availability (
   updated_at timestamptz default now(),
   unique (referee_id, date)
 );
+-- Aanvangstijden waarop iemand kan fluiten (leeg = alle tijden van die dag).
+alter table public.availability add column if not exists times text[] not null default '{}';
 
 -- Meldingen: voor één scheidsrechter (referee_id) of voor alle planners (to_planners).
 create table if not exists public.notifications (

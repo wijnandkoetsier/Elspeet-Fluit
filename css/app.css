@@ -522,3 +522,15 @@ a.mrow.menu { color: inherit; }
 .role-pick .seg input:checked + span { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
 .role-pick .seg input:focus-visible + span { outline: 2px solid var(--brand); outline-offset: 2px; }
 .role-pick small { display: block; margin-top: 6px; }
+
+/* Beschikbaarheid: aanvangstijden als keuzeknoppen, max per dag met − en + */
+.av-pick { margin-top: 14px; }
+.av-label { margin: 0 0 8px; font-size: .88rem; font-weight: 600; color: var(--muted); }
+.av-label small { font-weight: 500; }
+.chip.time { font-variant-numeric: tabular-nums; min-width: 4.2em; text-align: center; }
+.av-max { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.av-max .av-label { margin: 0; }
+.stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; flex: none; }
+.stepper button { appearance: none; border: 0; background: var(--card); font: inherit; font-size: 1.2rem; font-weight: 700; color: var(--brand); width: 44px; min-height: 42px; cursor: pointer; }
+.stepper button:disabled { color: var(--line); cursor: default; }
+.stepper b { min-width: 44px; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-variant-numeric: tabular-nums; }
