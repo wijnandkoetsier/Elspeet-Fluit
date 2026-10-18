@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v6';
+const KEY = 'scheidsapp-demo-v7';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -13,8 +13,8 @@ function seed() {
   const next = new Date(sat); next.setDate(next.getDate() + 7);
   const d2 = iso(next);
   const referees = [
-    { id: 'r1', name: 'Anouk de Vries', email: 'anouk@example.nl', pref_categories: ['O11', 'O12'], avoid_categories: [], active: true, user_id: 'u1' },
-    { id: 'r2', name: 'Bram Jansen', email: 'bram@example.nl', pref_categories: ['O15', 'O17'], avoid_categories: [], active: true, user_id: 'u2' },
+    { id: 'r1', name: 'Anouk de Vries', email: 'anouk@example.nl', phone: '06 12345678', pref_categories: ['O11', 'O12'], avoid_categories: [], active: true, user_id: 'u1' },
+    { id: 'r2', name: 'Bram Jansen', email: 'bram@example.nl', phone: '06 87654321', pref_categories: ['O15', 'O17'], avoid_categories: [], active: true, user_id: 'u2' },
     { id: 'r3', name: 'Chris Bakker', email: '', pref_categories: [], avoid_categories: [], active: true, user_id: null },
     // Daan is planner én scheidsrechter.
     { id: 'r4', name: 'Daan Visser', email: 'daan@example.nl', pref_categories: ['1e', '2e'], avoid_categories: [], active: true, user_id: 'u4', is_planner: true },
@@ -34,11 +34,17 @@ function seed() {
   matches[6].duration = 105;
   matches[6].external_ref = true; // KNVB stelt aan
   const availability = [
-    { id: uid(), referee_id: 'r1', date: d1, available: true, start_time: '08:00', end_time: '12:00', max_matches: 2 },
-    { id: uid(), referee_id: 'r2', date: d1, available: true, start_time: '10:00', end_time: '16:00', max_matches: 2 },
-    { id: uid(), referee_id: 'r4', date: d1, available: false, start_time: '', end_time: '', max_matches: null },
+    { id: uid(), referee_id: 'r1', date: d1, available: true, start_time: '', end_time: '', times: ['08:30', '09:00', '10:15'], max_matches: 2 },
+    { id: uid(), referee_id: 'r2', date: d1, available: true, start_time: '', end_time: '', times: ['10:15', '11:30', '13:00'], max_matches: 2 },
+    { id: uid(), referee_id: 'r4', date: d1, available: false, start_time: '', end_time: '', times: [], max_matches: null },
   ];
-  return { matches, referees, availability, notifications: [], offers: [], user: null };
+  // The weekly reminder (database job on Thursday evening, see supabase/schema.sql) as it would arrive.
+  const notifications = [{
+    id: uid(), referee_id: 'r1', to_planners: false, kind: 'reminder', title: 'Vul je beschikbaarheid in',
+    body: `Voor ${new Date(d2 + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })} weten we nog niet of je kunt fluiten.`,
+    date: d2, created_at: new Date(Date.now() - 2 * 3600000).toISOString(), read_at: null,
+  }];
+  return { matches, referees, availability, notifications, offers: [], user: null };
 }
 
 function load() {
@@ -191,10 +197,10 @@ export function createLocalStore() {
       db.notifications.forEach((n) => { if (ids.includes(n.id) && !n.read_at) n.read_at = now; });
       save();
     },
-    async updateProfile({ name }) {
+    async updateProfile({ name, phone }) {
       db.user.name = name;
       const r = db.referees.find((x) => x.id === db.user.referee_id);
-      if (r) r.name = name;
+      if (r) { r.name = name; if (phone !== undefined) r.phone = phone; }
       save();
     },
     onChange(f) { listeners.add(f); return () => listeners.delete(f); },

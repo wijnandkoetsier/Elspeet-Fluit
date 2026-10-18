@@ -22,7 +22,8 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - **Voorstel maken** vult de hele speeldag automatisch in als concept
 - **Publiceren** maakt de aanstellingen zichtbaar voor scheidsrechters
 - Per dag zien **wie er kan fluiten**, en beschikbaarheid invullen namens iemand (ook voor scheidsrechters zonder account)
-- Zien wie nog niets heeft ingevuld en een herinnering mailen
+- Zien wie nog niets heeft ingevuld en een herinnering mailen; elke donderdagavond krijgt wie nog niets heeft ingevuld automatisch een herinnering (melding en pushmelding)
+- Telefoonnummer per scheidsrechter, met knoppen om te bellen of te WhatsAppen
 - Waarschuwing in de planning en een melding als een aangestelde scheidsrechter zich afmeldt
 - Andere planners aanwijzen: bij **Scheidsen → Toevoegen** kies je Scheidsrechter, Planner (plant alleen, wordt nooit ingepland) of Allebei
 - Weekprogramma en seizoenscijfers exporteren (CSV, opent in Excel)
@@ -90,6 +91,8 @@ Meldingen staan altijd in het tabblad **Meldingen**. Voor een melding op het ver
 3. Supabase → **Edge Functions → Secrets**: voeg toe `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` en `VAPID_CONTACT` (je e-mailadres).
 4. Supabase → **Edge Functions → Deploy a new function → Via Editor**: naam `send-push`, plak de inhoud van [`supabase/functions/send-push/index.ts`](supabase/functions/send-push/index.ts) en klik **Deploy**.
 5. Supabase → **Database → Webhooks → Create a new hook**: naam `push`, tabel `notifications`, event **Insert**, type **Supabase Edge Functions**, functie `send-push`.
+
+**Wekelijkse herinnering:** `schema.sql` plant met de extensie **pg_cron** elke donderdag om 17:00 UTC een herinnering in voor wie de komende week wedstrijden heeft en nog niets heeft ingevuld. Meldt de SQL Editor *"Herinnering niet ingepland"*? Zet dan **Database → Extensions → pg_cron** aan en voer `schema.sql` opnieuw uit.
 6. Iedereen kan daarna bij **Meldingen** op **Meldingen aanzetten** tikken. Op de iPhone werkt dit alleen als de app op het beginscherm staat (iOS 16.4 of nieuwer).
 
 ### 6. Sportlink koppelen (via je TransIP-hosting)

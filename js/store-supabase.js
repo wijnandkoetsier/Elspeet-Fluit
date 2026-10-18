@@ -172,9 +172,9 @@ export function createSupabaseStore(url, key) {
       check(await sb.from('push_subscriptions').upsert(
         { user_id: user.id, endpoint: sub.endpoint, keys: sub.keys }, { onConflict: 'endpoint' }));
     },
-    async updateProfile({ name }) {
+    async updateProfile({ name, phone }) {
       check(await sb.from('profiles').update({ name }).eq('id', user.id));
-      if (user.referee_id) check(await sb.from('referees').update({ name }).eq('id', user.referee_id));
+      if (user.referee_id) check(await sb.from('referees').update(phone === undefined ? { name } : { name, phone }).eq('id', user.referee_id));
       user.name = name;
       emit();
     },

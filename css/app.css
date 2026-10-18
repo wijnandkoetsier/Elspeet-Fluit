@@ -534,3 +534,63 @@ a.mrow.menu { color: inherit; }
 .stepper button { appearance: none; border: 0; background: var(--card); font: inherit; font-size: 1.2rem; font-weight: 700; color: var(--brand); width: 44px; min-height: 42px; cursor: pointer; }
 .stepper button:disabled { color: var(--line); cursor: default; }
 .stepper b { min-width: 44px; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+
+/* Details onder een wedstrijd: elk deel heeft zijn eigen puntje ervoor. Begint een deel op een nieuwe
+   regel, dan valt dat puntje links buiten het blok en wordt het afgeknipt: geen losse "·" meer. */
+.mrow .sub { overflow: hidden; column-gap: 14px; }
+.mrow .sub .sep { display: none; }
+.sub .labels { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.sub .part { position: relative; min-width: 0; max-width: 100%; }
+.sub .part.dot::before { content: "·"; position: absolute; left: -10px; color: var(--line); font-weight: 700; }
+.sub .part:has(> .offer-text), .sub .part:has(> .issue-text) { flex-basis: 100%; }
+.offer-text, .issue-text { display: inline-flex; align-items: center; gap: 5px; }
+.offer-text svg { width: 1.1em; height: 1.1em; flex: none; }
+
+/* Knoppen en kaarten met een lijn-icoon voor de tekst */
+.icon-label { display: inline-flex; align-items: center; gap: 8px; }
+.btn.icon-label { justify-content: center; }
+.btn.block.icon-label { display: flex; }
+.icon-label svg { width: 1.15em; height: 1.15em; flex: none; }
+.card.warn.icon-label { display: flex; width: 100%; box-sizing: border-box; text-decoration: none; }
+.card.warn.icon-label span { flex: 1; }
+h3.icon-label { letter-spacing: 0; }
+h3.icon-label svg { width: 1.2em; height: 1.2em; }
+
+/* Open wedstrijden per dag */
+.list-date { margin: 0; padding: 12px 14px 6px; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--soft); }
+.mrow + .list-date { margin-top: 0; }
+.list-date + .mrow { border-top: 0 !important; }
+#open-list { scroll-margin-top: 80px; }
+
+/* Scheidsen: alleen tonen wat aandacht vraagt */
+.label.warn { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.ref .meta + .meta { margin-top: 2px; }
+.ref .meta .label { margin-left: 0; }
+
+/* Toewijzen: wie zich aanbiedt valt op */
+.cand.offered { border-color: var(--brand); background: var(--brand-soft); }
+.offer-tag { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: .72rem; font-weight: 700; color: var(--brand); background: var(--card); box-shadow: inset 0 0 0 1px var(--brand); vertical-align: .1em; }
+.offer-tag svg { width: 1em; height: 1em; }
+.cand .count { font-size: 1rem; min-width: 3.6em; }
+.cand .count small { font-size: .62rem; white-space: nowrap; }
+
+/* Bellen / WhatsApp */
+.contact-btns { display: flex; gap: 8px; margin: 4px 0 12px; }
+.contact-btns .btn { flex: 1; text-decoration: none; }
+
+/* App installeren: stappen */
+.install-steps { margin: 6px 0 0; padding-left: 1.3em; line-height: 1.6; }
+.inline-icon { display: inline-flex; vertical-align: -.2em; }
+.inline-icon svg { width: 1.1em; height: 1.1em; }
+
+/* Zo werkt het: inklapbaar */
+details.howto > summary { list-style: none; cursor: pointer; }
+details.howto > summary::-webkit-details-marker { display: none; }
+details.howto > summary .chev { transition: transform .2s; }
+details.howto[open] > summary .chev { transform: rotate(90deg); }
+details.howto:not([open]) > summary { border-bottom: 0; }
+
+/* Meldingen: lijn-iconen */
+.push-head h3 { margin: 0; }
+.nicon svg { width: 18px; height: 18px; }
+.k-reminder .nicon { background: var(--accent-soft); }
