@@ -9,6 +9,9 @@ import {
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const todayISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+// "1 wedstrijd", "2 wedstrijden".
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const nowHM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short' }) =>
   new Date(d + 'T12:00:00').toLocaleDateString('nl-NL', opts);
 
@@ -43,7 +46,6 @@ async function boot() {
     store = createLocalStore();
   }
   $('#app-name').textContent = APP_NAME;
-  $('#club').textContent = `${CLUB_NAME} · scheidsrechters`;
   document.title = APP_NAME;
   try { await store.init(); } catch (e) { toast(e.message, true); }
   store.onChange(refresh);
@@ -59,6 +61,10 @@ async function refresh() {
       state.data.matches.forEach((m) => { if (m.field) m.field = fieldName(m.field); m.category = upgradeCategory(m); });
       // Old categories (Senioren/Veteranen/Vrouwen) shown the new way until the database is migrated.
       state.data.referees.forEach((r) => { r.pref_categories = upgradePrefs(r.pref_categories); r.avoid_categories = upgradePrefs(r.avoid_categories); });
+      // Referees only see published assignments: a concept stays open for them until the planner publishes.
+      if (store.user.role !== 'planner') {
+        state.data.matches = state.data.matches.map((m) => (m.referee_id && !m.published ? { ...m, referee_id: null } : m));
+      }
     } catch (e) { toast('Laden mislukt: ' + e.message, true); }
   }
   render();
@@ -95,6 +101,16 @@ const ICONS = {
   refresh: svg('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>'),
   upload: svg('<path d="M12 16V4M7 8.5l5-5 5 5M4.5 20h15"/>'),
   warn: svg('<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5h.01"/>'),
+  phone: svg('<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
+  call: svg('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>'),
+  chat: svg('<path d="M4 20l1.4-4.2A8 8 0 1 1 8.6 19z"/>'),
+  mail: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6l8.5 7 8.5-7"/>'),
+  magic: svg('<path d="M4 20L15 9M13 7l4 4"/><path d="M18 3v4M16 5h4M20 13v3M18.5 14.5h3M8 3v3M6.5 4.5h3"/>'),
+  hand: svg('<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11V5.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5a6 6 0 0 1-5-2.7L3 15.5a1.5 1.5 0 0 1 2.4-1.8L8 16"/>'),
+  check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  cross: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  share: svg('<path d="M12 3v12M7.5 7.5L12 3l4.5 4.5"/><path d="M6 11H5v10h14V11h-1"/>'),
+  dots: svg('<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>'),
 };
 // Tabs per role. Hidden routes are reachable via Overzicht (planner) or Instellingen and light up their parent tab.
 const ROUTES = {
@@ -124,6 +140,7 @@ function render() {
   const nav = $('#nav');
   const view = $('#view');
   $('#demo-badge').hidden = store.mode !== 'demo';
+  $('#club').textContent = `${CLUB_NAME} · ${user?.role === 'planner' ? 'planning' : 'scheidsrechters'}`;
   if (!user) {
     nav.innerHTML = '';
     view.innerHTML = loginView();
@@ -144,6 +161,8 @@ function render() {
     mijn, beschikbaarheid, voorkeuren, profiel, meldingen, meer: plannerOverzicht };
   view.innerHTML = '';
   views[route](view);
+  // Jump to a section after navigating (e.g. "Bekijk open wedstrijden").
+  if (state.scrollTo) { const el = document.getElementById(state.scrollTo); state.scrollTo = null; el?.scrollIntoView({ block: 'start' }); }
 }
 
 // ---------- Login ----------
@@ -222,6 +241,11 @@ function matchDays() {
 // Team names keep 'JO12-2' together: a non-breaking hyphen stops the line from wrapping inside it.
 const team = (name) => esc(name).replace(/-/g, '\u2011');
 
+// Details under a match, separated by dots. Each part carries its own dot in front; a part that starts a
+// new line has its dot cut off (see .sub in app.css), so a line never ends or starts with a loose "·".
+const SEP = '<span class="sep">·</span>';
+const subParts = (sub) => (sub ? sub.split(SEP).filter(Boolean).map((p, i) => `<span class="part${i ? ' dot' : ''}">${p}</span>`).join('') : '');
+
 // One compact row in a day list: time | teams + labels / details | action.
 function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) {
   const labels = [
@@ -234,7 +258,7 @@ function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) 
       <div class="t">${esc(time)}</div>
       <div class="info">
         <div class="teams"><span class="home">${team(m.home)}</span>${m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
-        <div class="sub">${labels}${sub}</div>
+        <div class="sub">${labels ? `<span class="labels">${labels}</span>` : ''}${subParts(sub)}</div>
       </div>
       ${action}
     </div>`;
@@ -341,10 +365,10 @@ function planning(view) {
       parts.push(`<span class="st ${n ? 'ok' : 'none'}">${n ? `${n} beschikbaar` : 'niemand beschikbaar'}</span>`);
       if (m.sportlink_referee) parts.push(`<span class="sl-ref">In Sportlink: ${esc(m.sportlink_referee)}</span>`);
       const offeredBy = (state.data.offers || []).filter((o) => o.match_id === m.id).map((o) => refName(o.referee_id));
-      if (offeredBy.length) parts.push(`<span class="offer-text">✋ ${esc(offeredBy.join(', '))} ${offeredBy.length === 1 ? 'biedt' : 'bieden'} zich aan</span>`);
+      if (offeredBy.length) parts.push(`<span class="offer-text">${ICONS.hand}${esc(offeredBy.join(', '))} ${offeredBy.length === 1 ? 'biedt' : 'bieden'} zich aan</span>`);
       action = `<button class="btn pill-btn assign" data-assign="${m.id}">Toewijzen</button>`;
     }
-    return matchRow(m, { sub: parts.join('<span class="sep">·</span>'), action });
+    return matchRow(m, { sub: parts.join(SEP), action });
   }).join('') || `<p class="muted list-empty">${dayMatches.length ? 'Geen wedstrijden in deze selectie.' : 'Geen wedstrijden op deze dag.'}</p>`;
 
   const issues = own.filter((m) => assignmentIssue(m, state.data)).length;
@@ -352,7 +376,7 @@ function planning(view) {
 
   view.innerHTML = `
     ${dateNav(days, day, { filter })}
-    ${open.length ? '<div class="actions top"><button class="btn small" id="propose">✨ Voorstel maken</button></div>' : ''}
+    ${open.length ? `<div class="actions top"><button class="btn small icon-label" id="propose">${ICONS.magic}Voorstel maken</button></div>` : ''}
     ${dayList(fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }), pill, rows)}
     ${whoCanReferee(day)}
     ${unpublished.length ? `<div class="publish-space"></div>
@@ -367,12 +391,15 @@ function planning(view) {
     if (!list.length) return toast('Geen voorstel mogelijk: niemand (meer) beschikbaar voor open wedstrijden.');
     act(async () => {
       for (const p of list) await store.updateMatches([p.matchId], { referee_id: p.refereeId, published: false });
-    }, `${list.length} wedstrijd(en) ingevuld als concept. Controleer en publiceer.`);
+    }, `${plural(list.length, 'wedstrijd', 'wedstrijden')} ingevuld als concept. Controleer en publiceer.`);
   };
   const pub = $('#publish');
   if (pub) pub.onclick = () => act(() => store.updateMatches(unpublished.map((m) => m.id), { published: true }),
     'Planning gepubliceerd. Scheidsrechters zien hun aanstelling nu in de app.');
 }
+
+// Matches on a day that the club plans itself (KNVB matches don't count).
+const ownMatchCount = (day) => state.data.matches.filter((m) => m.date === day && !m.external_ref).length;
 
 // Kick-off times on a day (the choices when giving availability).
 const kickoffTimes = (day) => [...new Set(state.data.matches
@@ -466,7 +493,7 @@ function availabilitySheet(day) {
       ${block('Niet beschikbaar', g.no)}
       ${block('Nog niets ingevuld', g.none)}
     </div>
-    ${withMail.length ? `<a class="btn block" href="${remindLink(withMail, day)}">✉️ Herinnering mailen (${withMail.length})</a>
+    ${withMail.length ? `<a class="btn block icon-label" href="${remindLink(withMail, day)}">${ICONS.mail}Herinnering mailen (${withMail.length})</a>
       <p class="muted">Werkt dit niet? Mail dan zelf naar: <span class="select">${withMail.map((r) => esc(r.email)).join(', ')}</span></p>` : ''}
   `, (el, close) => {
     el.querySelectorAll('[data-edit-av]').forEach((row) => row.onclick = () => { close(); availEditor(row.dataset.editAv, day); });
@@ -482,6 +509,7 @@ function availEditor(refereeId, day) {
   sheet(`
     <h3>${esc(r.name)}</h3>
     <p class="muted">${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+    ${r.phone ? contactButtons(r.phone) : ''}
     <div class="seg three" id="av-choice">
       <button data-c="yes">✓ Beschikbaar</button><button data-c="no">✕ Niet</button><button data-c="none">Onbekend</button>
     </div>
@@ -532,12 +560,16 @@ function assignSheet(matchId) {
       ? '<p class="muted note">Deze aanstelling komt uit Sportlink. Wijzig hem in Sportlink; een wijziging hier wordt bij de volgende synchronisatie teruggezet.</p>'
       : m.sportlink_referee ? `<p class="muted note">In Sportlink staat als scheidsrechter: <b>${esc(m.sportlink_referee)}</b></p>` : ''}
     <div class="cands">
-      ${list.map((c) => `
-        <button class="cand ${c.status} ${c.referee.id === m.referee_id ? 'current' : ''}" data-ref="${c.referee.id}">
+      ${list.map((c) => {
+        const reasons = c.reasons.filter((x) => x !== 'Biedt zich aan');
+        return `
+        <button class="cand ${c.status} ${c.offered ? 'offered' : ''} ${c.referee.id === m.referee_id ? 'current' : ''}" data-ref="${c.referee.id}">
           <span class="dot"></span>
-          <span class="who"><b>${esc(c.referee.name)}</b><small>${esc(c.reasons.join(' · ') || label[c.status])}</small></span>
-          <span class="count" title="Wedstrijden dit seizoen">${c.season}×</span>
-        </button>`).join('') || '<p>Nog geen scheidsrechters.</p>'}
+          <span class="who"><b>${esc(c.referee.name)}</b>${c.offered ? `<span class="offer-tag">${ICONS.hand}Biedt zich aan</span>` : ''}
+            <small>${esc(reasons.join(' · ') || (c.offered ? '' : label[c.status]))}</small></span>
+          <span class="count" title="Aanstellingen dit seizoen">${c.season}<small>dit seizoen</small></span>
+        </button>`;
+      }).join('') || '<p>Nog geen scheidsrechters.</p>'}
     </div>
     ${m.referee_id ? '<button class="btn danger block" id="unassign">Toewijzing verwijderen</button>' : ''}
   `, (el, close) => {
@@ -549,7 +581,13 @@ function assignSheet(matchId) {
       act(() => store.updateMatches([m.id], { referee_id: c.referee.id, published: false, referee_from_sportlink: false }), `${c.referee.name} toegewezen (concept).`);
     });
     const un = $('#unassign', el);
-    if (un) un.onclick = () => { close(); act(() => store.updateMatches([m.id], { referee_id: null, published: false, referee_from_sportlink: false })); };
+    if (un) un.onclick = async () => {
+      const name = state.data.referees.find((r) => r.id === m.referee_id)?.name || 'De scheidsrechter';
+      const msg = m.published ? `Toewijzing verwijderen? ${name} krijgt hiervan een melding.` : 'Toewijzing verwijderen?';
+      if (!await ask(msg, 'Verwijderen')) return;
+      close();
+      act(() => store.updateMatches([m.id], { referee_id: null, published: false, referee_from_sportlink: false }), 'Toewijzing verwijderd');
+    };
   });
 }
 
@@ -565,7 +603,7 @@ function wedstrijden(view) {
       fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }),
       `<span class="pill">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>`,
       ms.map((m) => matchRow(m, {
-        sub: [m.field, `${m.duration || 90} min`, m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
+        sub: [m.field, `${m.duration || 90} min`, m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join(SEP),
         action: '<span class="chev" aria-hidden="true">›</span>',
         attrs: `data-edit="${m.id}" role="button" tabindex="0"`,
       })).join('') || '<p class="muted list-empty">Geen wedstrijden op deze dag.</p>',
@@ -653,7 +691,7 @@ function importSheet() {
         const exists = (p) => state.data.matches.some((m) => m.date === p.date && m.time === p.time && m.home === p.home);
         const dupes = parsed.filter(exists).length;
         parsed = parsed.filter((p) => !exists(p));
-        $('#csvinfo', el).textContent = `${parsed.length} nieuwe wedstrijd(en)${dupes ? `, ${dupes} bestaan al` : ''}.`;
+        $('#csvinfo', el).textContent = `${plural(parsed.length, 'nieuwe wedstrijd', 'nieuwe wedstrijden')}${dupes ? `, ${dupes} bestaan al` : ''}.`;
       } catch (e) { parsed = []; $('#csvinfo', el).textContent = e.message; }
       $('#doimport', el).disabled = !parsed.length;
     };
@@ -669,22 +707,35 @@ function scheidsrechters(view) {
   const season = seasonOf(todayISO()).label;
   const refs = state.data.referees.filter((r) => r.is_referee !== false);
   const plannersOnly = state.data.referees.filter((r) => r.is_referee === false);
-  const card = (r, count) => `
-        <article class="card ref tap ${r.active === false && r.is_referee !== false ? 'dim' : ''}" data-edit="${r.id}">
+  const card = (r, count) => {
+    const paused = r.active === false && r.is_referee !== false;
+    // Only show what needs attention: no e-mail, not logged in yet, or paused.
+    const status = !r.email ? '<span class="label warn">Geen e-mail</span>'
+      : !r.user_id ? '<span class="label warn">Nog niet ingelogd</span>' : '';
+    const meta = [
+      count && isPlannerRef(r) ? '<span class="label">Planner + scheids</span>' : '',
+      r.sportlink_name ? '<span class="label type">Uit Sportlink</span>' : '',
+      paused ? '<span class="label">Niet inplannen</span>' : '',
+      status,
+    ].filter(Boolean).join(' ');
+    const prefs = (r.pref_categories || []).length && r.is_referee !== false ? 'Graag ' + esc(prefLabel(r.pref_categories, CATEGORIES)) : '';
+    return `
+        <article class="card ref tap ${paused ? 'dim' : ''}" data-edit="${r.id}">
           <div class="avatar">${esc(initials(r.name))}</div>
           <div class="body"><b>${esc(r.name)}</b>
-            <div class="meta">${isPlannerRef(r) ? '<span class="label">Planner</span> ' : ''}${r.sportlink_name ? '<span class="label type">Uit Sportlink</span> ' : ''}${r.user_id ? 'heeft ingelogd' : r.email ? 'nog niet ingelogd' : 'geen e-mail'}${(r.pref_categories || []).length && r.is_referee !== false ? ' · graag ' + esc(prefLabel(r.pref_categories, CATEGORIES)) : ''}</div></div>
-          ${count ? `<div class="count">${counts[r.id] || 0}<small>${season}</small></div>` : ''}
+            ${meta ? `<div class="meta">${meta}</div>` : ''}${prefs ? `<div class="meta">${prefs}</div>` : ''}</div>
+          ${count ? `<div class="count" title="Aanstellingen seizoen ${season}">${counts[r.id] || 0}<small>dit seizoen</small></div>` : ''}
         </article>`;
+  };
   view.innerHTML = `
     <div class="actions top"><button class="btn primary" id="add-ref">＋ Toevoegen</button>
-      <button class="btn ghost" id="export-season">⬇︎ Seizoenscijfers</button></div>
+      <button class="btn ghost icon-label" id="export-season">${ICONS.download}Seizoenscijfers</button></div>
     <div class="list">
       ${refs.map((r) => card(r, true)).join('') || '<section class="card empty"><p>Nog geen scheidsrechters.</p></section>'}
     </div>
     ${plannersOnly.length ? `<h3 class="day">Alleen planner</h3><div class="list">${plannersOnly.map((r) => card(r, false)).join('')}</div>` : ''}
     <p class="muted pad">Alleen wie hier met een e-mailadres staat, kan inloggen. Deel daarna de link naar de app.</p>`;
-  $('#add-ref').onclick = () => refForm({ name: '', email: '', active: true, is_referee: true, pref_categories: [], avoid_categories: [] });
+  $('#add-ref').onclick = () => refForm({ name: '', email: '', phone: '', active: true, is_referee: true, pref_categories: [], avoid_categories: [] });
   $('#export-season').onclick = () => {
     const rows = [['Scheidsrechter', `Wedstrijden ${season}`]];
     refs.forEach((r) => rows.push([r.name, counts[r.id] || 0]));
@@ -714,8 +765,9 @@ function refAssignments(r) {
       <button class="mrow menu ref-match" data-goto="${m.date}">
         <div class="t">${esc(m.time)}<small>${esc(fmtDate(m.date))}</small></div>
         <div class="info"><div class="teams"><span class="home">${team(m.home)}</span>${m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
-          <div class="sub">${[m.field, m.category].filter(Boolean).map(esc).join('<span class="sep">·</span>')}<span class="sep">·</span>
-            <span class="st ${issue ? 'issue' : m.published ? 'pub' : 'concept'}">${status}</span>${issue ? `<span class="issue-text">${ICONS.warn}${esc(issue.join(', '))}</span>` : ''}</div></div>
+          <div class="sub">${subParts([...[m.field, m.category].filter(Boolean).map(esc),
+            `<span class="st ${issue ? 'issue' : m.published ? 'pub' : 'concept'}">${status}</span>`,
+            issue ? `<span class="issue-text">${ICONS.warn}${esc(issue.join(', '))}</span>` : ''].filter(Boolean).join(SEP))}</div></div>
         <span class="chev" aria-hidden="true">›</span>
       </button>`;
   }).join('');
@@ -727,6 +779,16 @@ function refAssignments(r) {
     </div>`;
 }
 
+// Call / WhatsApp buttons for a phone number (Dutch 06 numbers become +316 for WhatsApp).
+function contactButtons(phone) {
+  const digits = String(phone).replace(/[^\d+]/g, '');
+  const intl = digits.startsWith('+') ? digits.slice(1) : digits.startsWith('00') ? digits.slice(2) : digits.startsWith('0') ? '31' + digits.slice(1) : digits;
+  return `<div class="contact-btns">
+    <a class="btn icon-label" href="tel:${esc(digits)}">${ICONS.call}Bellen</a>
+    <a class="btn icon-label" href="https://wa.me/${esc(intl)}" target="_blank" rel="noopener">${ICONS.chat}WhatsApp</a>
+  </div>`;
+}
+
 function refForm(r) {
   sheet(`
     <h3>${r.id ? esc(r.name) : 'Nieuwe persoon'}</h3>
@@ -734,12 +796,14 @@ function refForm(r) {
     ${r.id ? '<h4 class="sheet-sub">Gegevens</h4>' : ''}
     <form id="rf" class="form">
       <label>Naam<input name="name" required value="${esc(r.name)}"></label>
-      <label>E-mail <small class="muted">(nodig om in te loggen)</small><input type="email" name="email" value="${esc(r.email)}"></label>
+      <label>E-mail <small class="muted">nodig om in te loggen</small><input type="email" name="email" value="${esc(r.email)}"></label>
+      <label>Telefoon <small class="muted">om te bellen of te appen</small><input type="tel" name="phone" autocomplete="tel" value="${esc(r.phone)}" placeholder="06 12345678"></label>
+      ${r.id && r.phone ? contactButtons(r.phone) : ''}
       <fieldset class="role-pick"><legend>Rol</legend>
         <div class="seg">${ROLES.map(([k, label]) => `<label><input type="radio" name="role" value="${k}" ${roleOf(r) === k ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
         <small class="muted" id="rf-role-help"></small>
       </fieldset>
-      <label class="check" id="rf-active"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Actief (kan worden ingepland)</label>
+      <label class="check" id="rf-active"><input type="checkbox" name="paused" ${r.active === false ? 'checked' : ''}> Tijdelijk niet inplannen <small class="muted">bijvoorbeeld bij een blessure</small></label>
       <p class="field-error" id="rf-err" hidden></p>
       <button class="btn primary block">Opslaan</button>
       ${r.id ? '<button type="button" class="btn danger block" id="del">Verwijderen</button>' : ''}
@@ -760,7 +824,7 @@ function refForm(r) {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
       const planner = f.role !== 'referee';
-      const row = { name: f.name.trim(), email: f.email.trim() || null, active: f.role === 'planner' ? true : !!f.active, is_referee: f.role !== 'planner' };
+      const row = { name: f.name.trim(), email: f.email.trim() || null, phone: f.phone.trim() || null, active: f.role === 'planner' ? true : !f.paused, is_referee: f.role !== 'planner' };
       const err = $('#rf-err', el), btn = $('#rf button.primary', el);
       if (!row.name) { err.textContent = 'Vul een naam in.'; err.hidden = false; return; }
       if (r.id) row.id = r.id;
@@ -782,7 +846,7 @@ function refForm(r) {
     const del = $('#del', el);
     if (del) del.onclick = async () => { if (await ask(`${r.name} verwijderen?`, 'Verwijderen')) { close(); act(() => store.deleteReferee(r.id), 'Verwijderd'); } };
     // Tap an assignment → open that day in the planning.
-    el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { close(); state.day = b.dataset.goto; location.hash = 'planning'; render(); });
+    el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { close(); state.day = b.dataset.goto; goTo('planning'); });
   });
 }
 
@@ -799,7 +863,10 @@ function overzicht(view) {
   const until = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`;
   const mine = matches.filter((m) => m.referee_id === me && m.published && m.date >= today).sort(byTime);
   const myDay = matches.filter((m) => m.referee_id === me && m.date >= today);
-  const allOpen = matches.filter((m) => !m.referee_id && !m.external_ref && m.date >= today && m.date <= until).sort(byTime);
+  // Open = no published referee yet, and kick-off still to come.
+  const now = nowHM();
+  const allOpen = matches.filter((m) => !m.referee_id && !m.external_ref && m.date <= until
+    && (m.date > today || (m.date === today && m.time > now))).sort(byTime);
   // Only what this referee likes to whistle ("Wat fluit je graag?" in Instellingen), unless they ask for all.
   const prefs = state.data.referees.find((r) => r.id === me)?.pref_categories || [];
   const filtered = prefs.length > 0 && !state.showAllOpen;
@@ -808,33 +875,39 @@ function overzicht(view) {
   const filterNote = !prefs.length ? ''
     : filtered ? `<p class="muted list-intro filter-note">Alleen wat je graag fluit: <b>${esc(prefLabel(prefs, CATEGORIES))}</b>. <a href="#profiel">Aanpassen</a>${hiddenCount ? ` · <button class="linkish" id="show-all-open">Toon alle ${allOpen.length}</button>` : ''}</p>`
     : `<p class="muted list-intro filter-note">Alle open wedstrijden. <button class="linkish" id="show-pref-open">Alleen wat ik graag fluit</button></p>`;
-  const todo = availabilityDates(matches).filter((d) => !state.data.availability.some((a) => a.referee_id === me && a.date === d));
+  // Only days that have matches to referee: an empty Saturday needs no answer yet.
+  const todo = availabilityDates(matches).filter((d) => ownMatchCount(d) > 0
+    && !state.data.availability.some((a) => a.referee_id === me && a.date === d));
   const latest = notifications.slice(0, 3);
   const unread = notifications.filter((n) => !n.read_at).length;
 
-  const openRows = open.map((m) => {
+  // Grouped per day: a small date heading, then that day's matches.
+  const openRows = open.map((m, i) => {
     const offered = offers.some((o) => o.match_id === m.id && o.referee_id === me);
     const busy = myDay.find((x) => overlaps(x, m));
     const action = offered
       ? `<button class="btn pill-btn offered" data-unoffer="${m.id}" title="Aanbod intrekken">✓ Aangeboden</button>`
       : busy ? `<span class="muted small-note">Je fluit dan al</span>`
       : `<button class="btn pill-btn assign" data-offer="${m.id}">Ik kan fluiten</button>`;
-    return matchRow(m, { time: m.time, sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>'), action });
+    const head = i === 0 || open[i - 1].date !== m.date
+      ? `<h3 class="list-date">${esc(fmtDate(m.date, { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>` : '';
+    return head + matchRow(m, { time: m.time, sub: esc(m.field || ''), action });
   }).join('');
 
   view.innerHTML = `
     ${heroCard('scheidsrechter', 'Klaar voor de volgende speeldag? Bekijk wanneer je mag fluiten.')}
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
-    ${todo.length ? `<a class="card warn tap block" href="#beschikbaarheid">📅 Vul je beschikbaarheid in voor ${todo.length} dag(en) →</a>` : ''}
+    ${todo.length ? `<a class="card warn tap block icon-label" href="#beschikbaarheid">${ICONS.calendar}<span>Vul je beschikbaarheid in voor ${todo.length === 1 ? fmtDate(todo[0], { weekday: 'long', day: 'numeric', month: 'long' }) : plural(todo.length, 'dag', 'dagen')}</span>${ICONS.arrow}</a>` : ''}
     ${dayList('Ik fluit', `<span class="pill ${mine.length ? 'done' : ''}">${mine.length} komend</span>`,
       (mine.slice(0, 3).map((m) => matchRow(m, {
-        sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>'),
+        sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join(SEP),
         action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
       })).join('') || '<p class="muted list-empty">Je hebt nog geen aanstellingen.</p>')
       + (mine.length > 3 ? `<a class="link-row pad-row" href="#mijn"><span>Alle ${mine.length} wedstrijden</span>${ICONS.arrow}</a>` : ''))}
     ${dayList('Laatste meldingen', unread ? `<span class="pill open">${unread} nieuw</span>` : '',
       (latest.map(notifRow).join('') || '<p class="muted list-empty">Nog geen meldingen.</p>')
       + (notifications.length ? `<a class="link-row pad-row" href="#meldingen"><span>Alle meldingen</span>${ICONS.arrow}</a>` : ''))}
+    <div id="open-list"></div>
     ${dayList('Open wedstrijden', `<span class="pill ${open.length ? 'open' : ''}">${open.length} zonder scheids</span>`,
       filterNote + (openRows ? `<p class="muted list-intro">Nog geen scheidsrechter voor de komende ${OPEN_DAYS_AHEAD / 7} weken. Tik op <b>Ik kan fluiten</b>, dan krijgt de planner bericht.</p>${openRows}`
         : `<p class="muted list-empty">${hiddenCount ? 'Geen open wedstrijden in wat je graag fluit.' : 'Alle wedstrijden van de komende weken hebben een scheidsrechter.'}</p>`))}`;
@@ -864,7 +937,7 @@ function mijn(view) {
   const upcoming = mine.filter((m) => m.date >= today);
   const { start, label } = seasonOf(today);
   const played = mine.filter((m) => m.date >= start && m.date < today).reverse();
-  const sub = (m) => [fmtDate(m.date), m.field].filter(Boolean).map(esc).join('<span class="sep">·</span>');
+  const sub = (m) => [fmtDate(m.date), m.field].filter(Boolean).map(esc).join(SEP);
 
   view.innerHTML = `
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
@@ -873,11 +946,14 @@ function mijn(view) {
         sub: sub(m),
         action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
       })).join(''))
-      : '<section class="card empty"><p>Je hebt nog geen wedstrijden om te fluiten.</p></section>'}
+      : `<section class="card empty"><p>Je hebt nog geen wedstrijden om te fluiten.</p>
+          ${store.user.role === 'planner' ? '' : '<button class="btn primary" id="see-open">Bekijk open wedstrijden</button>'}</section>`}
     ${played.length ? dayList(`Gefloten seizoen ${label}`, `<span class="pill">${played.length}</span>`,
       played.map((m) => matchRow(m, { sub: sub(m) })).join('')) : ''}`;
   view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () =>
     calendarSheet(state.data.matches.find((x) => x.id === b.dataset.ics)));
+  const seeOpen = $('#see-open');
+  if (seeOpen) seeOpen.onclick = () => { state.scrollTo = 'open-list'; location.hash = 'overzicht'; };
 }
 
 // Times for a calendar entry: be there 30 minutes before kick-off, until the end of the match.
@@ -955,12 +1031,13 @@ function beschikbaarheid(view) {
     <p class="muted pad">Geef per dag door of je kunt fluiten. Wijzigingen worden direct opgeslagen.</p>
     ${dates.map((d) => {
       const a = av(d);
-      const n = state.data.matches.filter((m) => m.date === d && !m.external_ref).length;
+      const n = ownMatchCount(d);
       const mine = state.data.matches.filter((m) => m.date === d && m.referee_id === me && m.published).length;
+      const count = n ? plural(n, 'wedstrijd', 'wedstrijden') : 'Nog geen programma bekend';
       return `
         <section class="card avail" data-date="${d}">
           <div class="head"><b>${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</b>
-            <small class="muted">${n} wedstrijden${mine ? ` · jij fluit er ${mine}` : ''}</small></div>
+            <small class="muted">${count}${mine ? ` · jij fluit er ${mine}` : ''}</small></div>
           <div class="seg">
             <button class="${a?.available ? 'on yes' : ''}" data-set="yes">✓ Beschikbaar</button>
             <button class="${a && !a.available ? 'on no' : ''}" data-set="no">✕ Niet</button>
@@ -980,23 +1057,26 @@ function beschikbaarheid(view) {
     const base = () => av(d) || { referee_id: me, date: d, start_time: '', end_time: '', times: [], max_matches: null };
     card.querySelectorAll('[data-set]').forEach((b) => b.onclick = async () => {
       const yes = b.dataset.set === 'yes';
-      if (!yes && state.data.matches.some((m) => m.date === d && m.referee_id === me)
+      if (!yes && state.data.matches.some((m) => m.date === d && m.referee_id === me && m.published)
         && !await ask('Je bent die dag al aangesteld. Toch afmelden? De planner krijgt hiervan een melding.', 'Toch afmelden')) return;
       const row = { ...base(), available: yes };
       saveAv(row);
     });
     card.querySelectorAll('[data-time], [data-step]').forEach((b) => b.onclick = () => saveAv({ ...base(), ...availPickerChange(d, base(), b) }));
   });
-  $('#abs').onclick = () => {
+  $('#abs').onclick = async () => {
     const from = $('#abs-from').value, to = $('#abs-to').value;
     if (!from || !to || to < from) return toast('Kies een geldige periode', true);
     const days = new Set(state.data.matches.filter((m) => m.date >= from && m.date <= to).map((m) => m.date));
     for (let x = new Date(from + 'T12:00:00'); x <= new Date(to + 'T12:00:00'); x.setDate(x.getDate() + 1)) {
       if (x.getDay() === 6 || x.getDay() === 0) days.add(x.toISOString().slice(0, 10));
     }
+    const fmt = (x) => fmtDate(x, { day: 'numeric', month: 'long' });
+    const busy = [...new Set(state.data.matches.filter((m) => m.referee_id === me && m.published && days.has(m.date)).map((m) => m.date))].sort();
+    if (busy.length && !await ask(`Je bent al aangesteld op ${busy.map(fmt).join(', ')}. Toch afmelden? De planner krijgt hiervan een melding.`, 'Toch afmelden')) return;
     act(async () => {
       for (const d of days) await store.saveAvailability({ ...(av(d) || { referee_id: me, date: d }), available: false });
-    }, `Afgemeld voor ${days.size} dag(en)`);
+    }, `Afgemeld voor ${plural(days.size, 'dag', 'dagen')}`);
   };
 }
 
@@ -1044,19 +1124,44 @@ function voorkeuren(view) {
   if (ref) bindPrefs(view, ref);
 }
 
+// How to put the app on the home screen, for the phone in hand (or both, on a computer).
+function installCard() {
+  const ua = navigator.userAgent;
+  const ios = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  const android = /android/i.test(ua);
+  const iosSteps = `<ol class="install-steps">
+      <li>Open deze pagina in <b>Safari</b>.</li>
+      <li>Tik op <b>Deel</b> <span class="inline-icon">${ICONS.share}</span> onderin.</li>
+      <li>Kies <b>Zet op beginscherm</b> en tik op <b>Voeg toe</b>.</li></ol>`;
+  const androidSteps = `<ol class="install-steps">
+      <li>Open deze pagina in <b>Chrome</b>.</li>
+      <li>Tik op het menu <span class="inline-icon">${ICONS.dots}</span> rechtsboven.</li>
+      <li>Kies <b>App installeren</b> of <b>Toevoegen aan startscherm</b>.</li></ol>`;
+  const body = state.installPrompt ? '<button class="btn primary block" id="install">Installeren</button>'
+    : ios ? iosSteps
+    : android ? androidSteps
+    : `<p class="muted">Open deze link op je telefoon.</p><h4 class="sheet-sub">iPhone</h4>${iosSteps}<h4 class="sheet-sub">Android</h4>${androidSteps}`;
+  return `
+    <section class="card">
+      <h3 class="icon-label">${ICONS.phone}Zet de app op je telefoon</h3>
+      ${body}
+    </section>`;
+}
+
 function profiel(view) {
   // Planners find "Wat fluit je graag?" on Overzicht; referees here in Instellingen.
   const isPlannerUser = store.user.role === 'planner';
   const u = store.user;
   const ref = state.data.referees.find((r) => r.id === u.referee_id);
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const roleText = u.role === 'planner' ? (ref && ref.is_referee !== false ? 'Planner + scheidsrechter' : 'Planner') : 'Scheidsrechter';
   view.innerHTML = `
     <section class="card">
       <h3>Mijn gegevens</h3>
       <form id="pf" class="form">
         <label>Naam<input name="name" required value="${esc(u.name)}"></label>
-        <p class="muted">${esc(u.email)} · ${u.role === 'planner' ? 'Planner' : 'Scheidsrechter'}</p>
+        ${ref ? `<label>Telefoon <small class="muted">zodat de planner je kan bellen of appen</small><input type="tel" name="phone" autocomplete="tel" value="${esc(ref.phone)}" placeholder="06 12345678"></label>` : ''}
+        <p class="muted">${esc(u.email)} · ${roleText}</p>
         <button class="btn block">Opslaan</button>
       </form>
     </section>
@@ -1069,21 +1174,19 @@ function profiel(view) {
       <p class="size-preview">Zo ziet de tekst eruit. De keuze geldt alleen voor dit toestel.</p>
     </section>
     ${ref && !isPlannerUser ? prefsCard(ref) : ''}
-    ${standalone ? '' : `
-    <section class="card">
-      <h3>📱 Zet de app op je telefoon</h3>
-      ${isIOS
-        ? '<p>Tik in Safari op <b>Deel</b> (vierkant met pijl) en kies <b>Zet op beginscherm</b>.</p>'
-        : state.installPrompt
-          ? '<button class="btn primary block" id="install">Installeren</button>'
-          : '<p>Open het browsermenu (⋮) en kies <b>App installeren</b> of <b>Toevoegen aan startscherm</b>.</p>'}
-    </section>`}
+    ${pushCard(true)}
+    ${standalone ? '' : installCard()}
     <section class="card">
       <button class="btn block" id="logout">Uitloggen</button>
       ${store.mode === 'demo' ? '<button class="btn ghost block" id="reset">Demo-gegevens herstellen</button>' : ''}
     </section>`;
   view.querySelectorAll('[data-size]').forEach((b) => b.onclick = () => { setTextSize(b.dataset.size); render(); });
-  $('#pf').onsubmit = (e) => { e.preventDefault(); act(() => store.updateProfile({ name: new FormData(e.target).get('name').trim() }), 'Opgeslagen'); };
+  $('#pf').onsubmit = (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    act(() => store.updateProfile({ name: f.get('name').trim(), phone: ref ? (f.get('phone') || '').trim() || null : undefined }), 'Opgeslagen');
+  };
+  bindPush();
   if (ref && !isPlannerUser) bindPrefs(view, ref);
   const inst = $('#install');
   if (inst) inst.onclick = async () => { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; render(); };
@@ -1093,7 +1196,7 @@ function profiel(view) {
 }
 
 // ---------- Meldingen ----------
-const KIND_ICON = { assigned: '✓', changed: '↻', withdrawn: '✕', cancelled: '✕', unavailable: '!', offer: '✋' };
+const KIND_ICON = { assigned: ICONS.check, changed: ICONS.refresh, withdrawn: ICONS.cross, cancelled: ICONS.cross, unavailable: ICONS.warn, offer: ICONS.hand, reminder: ICONS.calendar };
 
 function notifRow(n) {
   return `
@@ -1108,7 +1211,8 @@ function bindNotifRows(view) {
   view.querySelectorAll('[data-n]').forEach((row) => row.onclick = () => {
     const n = state.data.notifications.find((x) => x.id === row.dataset.n);
     if (!n.read_at) act(() => store.markRead([n.id]));
-    if (n.to_planners && n.date) { state.day = n.date; location.hash = 'planning'; }
+    if (n.kind === 'reminder') location.hash = 'beschikbaarheid';
+    else if (n.to_planners && n.date) { state.day = n.date; location.hash = 'planning'; }
     else if (n.kind !== 'cancelled' && n.kind !== 'withdrawn') location.hash = 'mijn';
   });
 }
@@ -1147,8 +1251,10 @@ function pushStatus() {
   return Notification.permission === 'granted' ? 'on' : Notification.permission === 'denied' ? 'denied' : 'off';
 }
 
-function pushCard() {
+// On Meldingen only when there is something to do; under Instellingen always (settings = true).
+function pushCard(settings = false) {
   const st = pushStatus();
+  if (!settings && !['off', 'install', 'denied'].includes(st)) return '';
   const text = {
     unconfigured: store.mode === 'demo'
       ? 'In de demo verschijnen meldingen alleen hier. In de echte app krijg je ze ook als pushmelding op je telefoon.'
@@ -1161,7 +1267,7 @@ function pushCard() {
   }[st];
   return `
     <section class="card push ${st}">
-      <div class="push-head">${ICONS.bell}<b>Pushmeldingen</b>${st === 'on' ? '<span class="pill done">Aan</span>' : ''}</div>
+      <div class="push-head">${ICONS.bell}<h3>Pushmeldingen</h3>${st === 'on' ? '<span class="pill done">Aan</span>' : ''}</div>
       <p class="muted">${text}</p>
       ${st === 'off' ? '<button class="btn primary block" id="push-on">Meldingen aanzetten</button>' : ''}
     </section>`;
@@ -1205,6 +1311,8 @@ const menuLink = (href, icon, title, sub, right = '') => `
   <a class="mrow menu" href="#${href}"><span class="micon">${icon}</span>
     <div class="info"><b>${title}</b><div class="sub">${sub}</div>${right && right.replace(/<[^>]+>/g, '') ? `<div class="menu-pills">${right}</div>` : ''}</div><span class="chev" aria-hidden="true">›</span></a>`;
 
+const HOWTO_KEY = 'scheidsapp-howto-gezien';
+
 function plannerOverzicht(view) {
   const me = store.user.referee_id;
   const today = todayISO();
@@ -1217,11 +1325,17 @@ function plannerOverzicht(view) {
   const offered = open.filter((m) => offers.some((o) => o.match_id === m.id)).length;
   const unread = notifications.filter((n) => !n.read_at).length;
   const pill = (n, text, cls = 'open') => (n ? `<span class="pill ${cls}">${n} ${text}</span>` : '');
+  // "Zo werkt het" is open the first time; after that it starts folded (remembered per device).
+  if (state.howtoOpen == null) {
+    let seen = false;
+    try { seen = localStorage.getItem(HOWTO_KEY) === '1'; localStorage.setItem(HOWTO_KEY, '1'); } catch {}
+    state.howtoOpen = !seen;
+  }
 
   view.innerHTML = `
     ${heroCard('planner', 'Wedstrijden, scheidsrechters en aanstellingen op één plek.')}
-    <section class="card day-list">
-      <header class="day-head"><h2>Zo werkt het</h2></header>
+    <details class="card day-list howto" ${state.howtoOpen ? 'open' : ''}>
+      <summary class="day-head"><h2>Zo werkt het</h2><span class="chev" aria-hidden="true">›</span></summary>
       <ol class="steps">
         ${[
           [ICONS.refresh, 'Wedstrijden binnenhalen', 'Elk uur automatisch uit Sportlink. Je kunt ook zelf wedstrijden toevoegen.'],
@@ -1232,11 +1346,11 @@ function plannerOverzicht(view) {
         <li><span class="step-dot" aria-hidden="true">${icon}<b>${i + 1}</b></span>
           <div><b>${title}</b><p>${text}</p></div></li>`).join('')}
       </ol>
-    </section>
+    </details>
     <section class="card day-list">
       <header class="day-head"><h2>Direct naar</h2></header>
       ${menuLink('planning', ICONS.planning, 'Planning', 'Per speeldag toewijzen en publiceren',
-        `${pill(open.length, 'open')}${pill(concept.length, 'concept', '')}${pill(issues, 'probleem', 'issue')}`)}
+        `${pill(open.length, 'open')}${pill(concept.length, 'concept', '')}${issues ? `<span class="pill issue">${plural(issues, 'probleem', 'problemen')}</span>` : ''}`)}
       ${menuLink('wedstrijden', ICONS.ball, 'Wedstrijden', 'Alle wedstrijden bekijken, toevoegen of wijzigen',
         `${pill(coming.length, 'komend', '')}`)}
       ${menuLink('scheidsrechters', ICONS.people, 'Scheidsen', 'Scheidsrechters, contactgegevens en aanstellingen',
@@ -1265,23 +1379,71 @@ function plannerOverzicht(view) {
     </section>
     <section class="card day-list">
       <header class="day-head"><h2>App</h2></header>
-      ${menuLink('profiel', ICONS.settings, 'Instellingen', 'Naam, tekstgrootte, app installeren, uitloggen')}
+      ${menuLink('profiel', ICONS.settings, 'Instellingen', 'Naam, telefoon, tekstgrootte, pushmeldingen, uitloggen')}
     </section>`;
   bindSportlink();
   $('#csv-import').onclick = importSheet;
+  $('.howto', view).ontoggle = (e) => { state.howtoOpen = e.target.open; };
 }
 
 // ---------- UI helpers ----------
+// Each open sheet adds a history entry, so the phone's back button closes the sheet instead of
+// leaving the page. Closing it ourselves steps back over that entry again.
+let sheetDepth = 0;
+let backSteps = 0;
+let afterBack = null;
+
 function sheet(html, bind) {
+  const depth = ++sheetDepth;
   const wrap = document.createElement('div');
   wrap.className = 'sheet-wrap';
+  wrap.dataset.depth = depth;
   wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><button class="close" aria-label="Sluiten">✕</button>${html}</div>`;
-  const close = () => wrap.remove();
+  let gone = false;
+  // Remove without touching history (used when the back button already did that).
+  wrap.remove = () => {
+    if (gone) return;
+    gone = true;
+    Element.prototype.remove.call(wrap);
+    sheetDepth = Math.min(sheetDepth, depth - 1);
+    wrap.onRemove?.();
+  };
+  const close = () => {
+    if (gone) return;
+    wrap.remove();
+    if (history.state?.sheet >= depth) stepBack();
+  };
+  wrap.close = close;
   wrap.onclick = (e) => { if (e.target === wrap) close(); };
-  $('.close', wrap).onclick = close;
+  $('.close', wrap).onclick = () => wrap.close();
+  history.pushState({ sheet: depth }, '');
   document.body.appendChild(wrap);
   bind?.(wrap, close);
 }
+
+// Several sheets can close in one go (a question on top of a sheet): step back once for all of them.
+function stepBack() {
+  if (!backSteps) setTimeout(() => { const n = backSteps; backSteps = 0; history.go(-n); });
+  backSteps++;
+}
+
+// Go to another screen after closing a sheet (waits until the history step is done).
+function goTo(hash) {
+  const go = () => { if (location.hash === '#' + hash) render(); else location.hash = hash; };
+  if (backSteps || afterBack) afterBack = go;
+  else go();
+}
+
+window.addEventListener('popstate', (e) => {
+  const keep = e.state?.sheet || 0;
+  document.querySelectorAll('.sheet-wrap').forEach((w) => { if (Number(w.dataset.depth) > keep) w.remove(); });
+  if (afterBack) { const f = afterBack; afterBack = null; f(); }
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const top = [...document.querySelectorAll('.sheet-wrap')].pop();
+  if (top) top.close();
+});
 
 // In-page confirmation (native confirm() is blocked in some embedded views).
 function ask(message, okLabel = 'OK') {
@@ -1289,11 +1451,13 @@ function ask(message, okLabel = 'OK') {
     sheet(`<h3>${esc(message)}</h3>
       <div class="actions"><button class="btn" id="ask-no">Annuleren</button>
       <button class="btn primary" id="ask-yes">${esc(okLabel)}</button></div>`, (el, close) => {
-      const done = (v) => { close(); resolve(v); };
+      const done = (v) => { resolve(v); close(); };
       $('#ask-yes', el).onclick = () => done(true);
       $('#ask-no', el).onclick = () => done(false);
-      $('.close', el).onclick = () => done(false);
+      el.close = () => done(false);
       el.onclick = (e) => { if (e.target === el) done(false); };
+      // Closed with the back button: counts as "no".
+      el.onRemove = () => resolve(false);
     });
   });
 }

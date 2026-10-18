@@ -53,6 +53,8 @@ alter table public.referees add column if not exists sportlink_name text;
 -- de eerste keer inloggen (en blijft gelijk met de rol daarna).
 alter table public.referees add column if not exists is_referee boolean not null default true;
 alter table public.referees add column if not exists invite_planner boolean not null default false;
+-- Telefoonnummer, zodat de planner kan bellen of appen (scheidsrechter mag het zelf aanpassen).
+alter table public.referees add column if not exists phone text;
 
 -- Logboek van de Sportlink-synchronisatie (laatste run zichtbaar voor planners).
 create table if not exists public.sync_runs (
@@ -348,6 +350,47 @@ exception when others then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.offers;
 exception when others then null; end $$;
+
+-- Herinnering: elke donderdagavond een melding (en pushmelding) voor wie de komende week wedstrijden
+-- heeft om te fluiten, maar nog niet heeft doorgegeven of hij of zij kan. Eén melding per persoon per dag.
+create or replace function public.remind_availability() returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  day_names text[] := array['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag'];
+  month_names text[] := array['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus',
+    'september', 'oktober', 'november', 'december'];
+  rec record;
+  sent int := 0;
+begin
+  for rec in
+    select distinct on (r.id) r.id as referee_id, m.date
+    from referees r
+    join matches m on m.date between current_date + 1 and current_date + 7 and not m.external_ref
+    where r.active and r.is_referee and r.user_id is not null
+      and not exists (select 1 from availability a where a.referee_id = r.id and a.date = m.date)
+      and not exists (select 1 from notifications n where n.referee_id = r.id and n.kind = 'reminder' and n.date = m.date)
+    order by r.id, m.date
+  loop
+    insert into notifications (referee_id, kind, title, body, date)
+    values (rec.referee_id, 'reminder', 'Vul je beschikbaarheid in',
+      'Voor ' || day_names[extract(dow from rec.date)::int + 1] || ' ' || extract(day from rec.date)::int || ' '
+        || month_names[extract(month from rec.date)::int] || ' weten we nog niet of je kunt fluiten.',
+      rec.date);
+    sent := sent + 1;
+  end loop;
+  return sent;
+end $$;
+revoke execute on function public.remind_availability() from public, anon, authenticated;
+
+-- Inplannen met pg_cron: donderdag 17:00 UTC (18:00 in de winter, 19:00 in de zomer).
+-- Lukt dit niet? Zet in Supabase de extensie pg_cron aan (Database → Extensions) en voer dit bestand opnieuw uit.
+do $$ begin
+  create extension if not exists pg_cron with schema pg_catalog;
+  perform cron.unschedule(jobid) from cron.job where jobname = 'beschikbaarheid-herinnering';
+  perform cron.schedule('beschikbaarheid-herinnering', '0 17 * * 4', 'select public.remind_availability()');
+exception when others then
+  raise notice 'Herinnering niet ingepland (%). Zet pg_cron aan en voer dit bestand opnieuw uit.', sqlerrm;
+end $$;
 
 -- Eerste planner instellen:
 --   1. insert into public.referees (name, email, active) values ('Jouw naam', 'jij@voorbeeld.nl', true);
