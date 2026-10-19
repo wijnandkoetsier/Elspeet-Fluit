@@ -218,8 +218,10 @@ begin
     return old;
   end if;
 
+  -- Geen melding als de scheidsrechter zelf net is verwijderd (dan wordt de wedstrijd vrijgemaakt).
   if old.published and old.referee_id is not null
-     and (new.referee_id is distinct from old.referee_id or not new.published) then
+     and (new.referee_id is distinct from old.referee_id or not new.published)
+     and exists (select 1 from referees where id = old.referee_id) then
     insert into notifications (referee_id, kind, title, body, match_id, date)
     values (old.referee_id, 'withdrawn', 'Aanstelling ingetrokken', match_label(old), new.id, old.date);
   elsif old.published and new.published and new.referee_id = old.referee_id
@@ -252,7 +254,7 @@ begin
   select name into who from referees where id = new.referee_id;
   insert into notifications (to_planners, kind, title, body, date)
   values (true, 'unavailable', who || ' heeft zich afgemeld',
-          'Afgemeld voor ' || to_char(new.date, 'DD-MM') || ', maar aangesteld bij ' || n || ' wedstrijd(en).', new.date);
+          'Afgemeld voor ' || to_char(new.date, 'DD-MM') || ', maar aangesteld bij ' || n || case when n = 1 then ' wedstrijd.' else ' wedstrijden.' end, new.date);
   return new;
 end $$;
 -- Aanbod van een scheidsrechter → melding voor planners.
