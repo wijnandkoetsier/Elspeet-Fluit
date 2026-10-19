@@ -446,10 +446,25 @@ const kickoffTimes = (day) => [...new Set(state.data.matches
   .filter((m) => m.date === day && !m.external_ref).map((m) => m.time))].sort();
 
 // "Op welke tijden kun je?" chips and the max-per-day stepper; empty selection = all times.
-function availPicker(day, a) {
+function availPicker(day, a, { compact = false } = {}) {
   const times = kickoffTimes(day);
   const sel = new Set(a?.times || []);
   const max = a?.max_matches || 0;
+  // Compact (referee's Beschikbaar screen): no long labels. One kick-off time = nothing to choose.
+  if (compact) {
+    if (times.length <= 1) return '';
+    const limit = sel.size || times.length;
+    return `
+    <div class="av-pick compact">
+      <div class="chips wrap">${times.map((t) => `<button type="button" class="chip time ${sel.has(t) ? 'on' : ''}" data-time="${t}" aria-pressed="${sel.has(t)}">${t}</button>`).join('')}</div>
+      <div class="av-foot">
+        <small class="muted">${sel.size ? `${sel.size} van ${times.length} tijden` : 'Alle tijden'}</small>
+        ${limit > 1 ? `<span class="av-max-inline"><small class="muted">Max per dag</small>
+          <span class="stepper sm"><button type="button" data-step="-1" aria-label="Minder" ${max ? '' : 'disabled'}>−</button>
+          <b>${max ? Math.min(max, limit) : '–'}</b><button type="button" data-step="1" aria-label="Meer" ${max >= limit ? 'disabled' : ''}>+</button></span></span>` : ''}
+      </div>
+    </div>`;
+  }
   return `
     <div class="av-pick">
       <p class="av-label">Op welke aanvangstijden kun je? <small class="muted">${sel.size ? '' : 'Niets gekozen = alle tijden'}</small></p>
@@ -469,7 +484,9 @@ function availPickerChange(day, a, btn) {
   if (btn.dataset.time) {
     const t = btn.dataset.time;
     times = times.includes(t) ? times.filter((x) => x !== t) : [...times, t].sort();
-  } else max = Math.max(0, Math.min(Math.max(valid.length, 1), max + Number(btn.dataset.step)));
+  } else max = max + Number(btn.dataset.step);
+  // Never more than the number of chosen times (or all times when none are chosen).
+  max = Math.max(0, Math.min(Math.max(times.length || valid.length, 1), max));
   return { times, max_matches: max || null, start_time: '', end_time: '' };
 }
 
@@ -1068,21 +1085,24 @@ function beschikbaarheid(view) {
   const dates = availabilityDates(state.data.matches);
   const av = (d) => state.data.availability.find((a) => a.referee_id === me && a.date === d);
   view.innerHTML = `
-    <p class="muted pad">Geef per dag door of je kunt fluiten. Wijzigingen worden direct opgeslagen.</p>
+    <p class="muted pad av-intro">Kun je fluiten? Tik per dag op <b>Ja</b> of <b>Nee</b>. Bij Ja kun je de aanvangstijden kiezen; niets gekozen = alle tijden. Alles wordt direct opgeslagen.</p>
     ${dates.map((d) => {
       const a = av(d);
       const n = ownMatchCount(d);
       const mine = state.data.matches.filter((m) => m.date === d && m.referee_id === me && m.published).length;
-      const count = n ? plural(n, 'wedstrijd', 'wedstrijden') : 'Nog geen programma bekend';
+      const count = n ? plural(n, 'wedstrijd', 'wedstrijden') : 'Nog geen programma';
+      const st = !a ? 'todo' : a.available ? 'yes' : 'no';
       return `
-        <section class="card avail" data-date="${d}">
-          <div class="head"><b>${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</b>
-            <small class="muted">${count}${mine ? ` · jij fluit er ${mine}` : ''}</small></div>
-          <div class="seg">
-            <button class="${a?.available ? 'on yes' : ''}" data-set="yes">✓ Beschikbaar</button>
-            <button class="${a && !a.available ? 'on no' : ''}" data-set="no">✕ Niet</button>
+        <section class="card avail compact st-${st}" data-date="${d}">
+          <div class="av-row">
+            <div class="head"><b>${fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')}</b>
+              <small class="muted">${count}${mine ? ` · jij fluit er ${mine}` : ''}</small></div>
+            <div class="seg yn" role="group" aria-label="Beschikbaar op ${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}">
+              <button class="${a?.available ? 'on yes' : ''}" data-set="yes" aria-pressed="${!!a?.available}">✓ Ja</button>
+              <button class="${a && !a.available ? 'on no' : ''}" data-set="no" aria-pressed="${!!(a && !a.available)}">✕ Nee</button>
+            </div>
           </div>
-          ${a?.available ? availPicker(d, a) : ''}
+          ${a?.available && n ? availPicker(d, a, { compact: true }) : ''}
         </section>`;
     }).join('')}
     <section class="card">
