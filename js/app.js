@@ -53,21 +53,53 @@ async function boot() {
   await refresh();
 }
 
+// ---------- Testen: wisselen tussen planner- en scheidsrechtersweergave ----------
+// Only for these accounts, and only when they are planner: a planner can look at the app the way a
+// referee sees it. It only changes what is shown; the database rights stay those of a planner.
+const VIEW_SWITCH_EMAILS = ['wijnandkoetsier@gmail.com'];
+const VIEW_KEY = 'scheidsapp-weergave';
+const canSwitchView = () => !!store.user && store.user.role === 'planner'
+  && VIEW_SWITCH_EMAILS.includes(String(store.user.email || '').trim().toLowerCase());
+function viewRole() {
+  if (!store.user) return null;
+  if (store.user.role !== 'planner') return 'referee';
+  if (!canSwitchView()) return 'planner';
+  try { return localStorage.getItem(VIEW_KEY) === 'referee' ? 'referee' : 'planner'; } catch { return 'planner'; }
+}
+function setViewRole(role) {
+  try { localStorage.setItem(VIEW_KEY, role); } catch {}
+  state.day = null;
+  derive();
+  if (location.hash) location.hash = ''; else render();
+}
+
 async function refresh() {
   if (store.user) {
     try {
-      state.data = await store.loadAll();
-      // Show fields the short way everywhere ("Veld 1-hoofdveld" → "Veld 1").
-      state.data.matches.forEach((m) => { if (m.field) m.field = fieldName(m.field); m.category = upgradeCategory(m); });
-      // Old categories (Senioren/Veteranen/Vrouwen) shown the new way until the database is migrated.
-      state.data.referees.forEach((r) => { r.pref_categories = upgradePrefs(r.pref_categories); r.avoid_categories = upgradePrefs(r.avoid_categories); });
-      // Referees only see published assignments: a concept stays open for them until the planner publishes.
-      if (store.user.role !== 'planner') {
-        state.data.matches = state.data.matches.map((m) => (m.referee_id && !m.published ? { ...m, referee_id: null } : m));
-      }
+      state.raw = await store.loadAll();
+      derive();
     } catch (e) { toast('Laden mislukt: ' + e.message, true); }
   }
   render();
+}
+
+// What the current view shows, from the loaded data (state.raw).
+function derive() {
+  if (!state.raw) return;
+  const d = { ...state.raw };
+  // Show fields the short way everywhere ("Veld 1-hoofdveld" → "Veld 1").
+  d.matches = d.matches.map((m) => ({ ...m, field: m.field ? fieldName(m.field) : m.field, category: upgradeCategory(m) }));
+  // Old categories (Senioren/Veteranen/Vrouwen) shown the new way until the database is migrated.
+  d.referees = d.referees.map((r) => ({ ...r, pref_categories: upgradePrefs(r.pref_categories), avoid_categories: upgradePrefs(r.avoid_categories) }));
+  if (viewRole() === 'referee') {
+    const me = store.user.referee_id;
+    // Referees only see published assignments: a concept stays open for them until the planner publishes.
+    d.matches = d.matches.map((m) => (m.referee_id && !m.published ? { ...m, referee_id: null } : m));
+    // A planner looking as referee: only their own notifications and offers.
+    d.notifications = (d.notifications || []).filter((n) => n.referee_id && n.referee_id === me);
+    d.offers = (d.offers || []).filter((o) => o.referee_id === me);
+  }
+  state.data = d;
 }
 
 async function act(fn, ok) {
@@ -140,14 +172,22 @@ function render() {
   const nav = $('#nav');
   const view = $('#view');
   $('#demo-badge').hidden = store.mode !== 'demo';
-  $('#club').textContent = `${CLUB_NAME} · ${user?.role === 'planner' ? 'planning' : 'scheidsrechters'}`;
+  $('#club').textContent = `${CLUB_NAME} · ${viewRole() === 'planner' ? 'planning' : 'scheidsrechters'}`;
+  const sw = $('#view-switch');
+  sw.hidden = !canSwitchView();
+  if (!sw.hidden) {
+    const cur = viewRole();
+    sw.innerHTML = [['planner', 'Planner'], ['referee', 'Scheids']].map(([k, label]) =>
+      `<button type="button" data-view="${k}" class="${k === cur ? 'on' : ''}" aria-pressed="${k === cur}">${label}</button>`).join('');
+    sw.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => { if (b.dataset.view !== cur) setViewRole(b.dataset.view); });
+  }
   if (!user) {
     nav.innerHTML = '';
     view.innerHTML = loginView();
     bindLogin();
     return;
   }
-  const role = user.role === 'planner' ? 'planner' : 'referee';
+  const role = viewRole();
   const routes = ROUTES[role];
   const hidden = HIDDEN[role];
   let route = location.hash.replace(/^#\/?/, '');
@@ -947,7 +987,7 @@ function mijn(view) {
         action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
       })).join(''))
       : `<section class="card empty"><p>Je hebt nog geen wedstrijden om te fluiten.</p>
-          ${store.user.role === 'planner' ? '' : '<button class="btn primary" id="see-open">Bekijk open wedstrijden</button>'}</section>`}
+          ${viewRole() === 'planner' ? '' : '<button class="btn primary" id="see-open">Bekijk open wedstrijden</button>'}</section>`}
     ${played.length ? dayList(`Gefloten seizoen ${label}`, `<span class="pill">${played.length}</span>`,
       played.map((m) => matchRow(m, { sub: sub(m) })).join('')) : ''}`;
   view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () =>
@@ -1150,7 +1190,7 @@ function installCard() {
 
 function profiel(view) {
   // Planners find "Wat fluit je graag?" on Overzicht; referees here in Instellingen.
-  const isPlannerUser = store.user.role === 'planner';
+  const isPlannerUser = viewRole() === 'planner';
   const u = store.user;
   const ref = state.data.referees.find((r) => r.id === u.referee_id);
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;

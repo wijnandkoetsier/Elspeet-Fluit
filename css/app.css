@@ -594,3 +594,12 @@ details.howto:not([open]) > summary { border-bottom: 0; }
 .push-head h3 { margin: 0; }
 .nicon svg { width: 18px; height: 18px; }
 .k-reminder .nicon { background: var(--accent-soft); }
+
+/* Testen: wisselen tussen planner- en scheidsrechtersweergave (alleen voor de beheerder) */
+.top-right { display: flex; align-items: center; gap: 8px; }
+.view-switch { display: inline-flex; border: 1px solid var(--bar-muted); border-radius: 999px; overflow: hidden; }
+.view-switch button {
+  appearance: none; border: 0; background: transparent; color: var(--bar-muted);
+  font: inherit; font-size: .75rem; font-weight: 700; padding: 6px 10px; min-height: 32px; cursor: pointer;
+}
+.view-switch button.on { background: var(--accent); color: var(--accent-ink); }
