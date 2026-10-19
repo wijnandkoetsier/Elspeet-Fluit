@@ -1,5 +1,5 @@
 // Datalaag: alles komt van de WordPress-site van de club.
-// - Nieuws, verslagen, foto's en pagina's: de standaard WordPress REST API (live).
+// - Nieuws, verslagen en foto's: de standaard WordPress REST API (live).
 // - Programma, uitslagen, standen, teams, agenda, sponsors: /wp-json/vve/v1/app,
 //   met de momentopname in data/snapshot.json als terugval.
 import { SITE, APP_ENDPOINT } from './config.js';
@@ -67,20 +67,6 @@ export function posts({ category = '', page = 1, perPage = 10 } = {}) {
 
 export function post(id) {
   return cached(`post:${id}`, async () => normalizePost(await getJson(`${WP}/posts/${id}?_embed=wp:featuredmedia`)));
-}
-
-/** Een gewone WordPress-pagina (bijv. "contributie") om binnen de app te tonen. */
-export function page(slug) {
-  return cached(`page:${slug}`, async () => {
-    // Eerst het app-endpoint (levert ook themapagina's), anders de gewone WordPress-pagina.
-    try {
-      const a = await getJson(`${SITE}/wp-json/vve/v1/pagina/${encodeURIComponent(slug)}`, { timeout: 5000 });
-      if (a?.html) return a;
-    } catch { /* endpoint bestaat nog niet */ }
-    const [p] = await getJson(`${WP}/pages?slug=${encodeURIComponent(slug)}&_fields=id,title,content,link`);
-    if (!p) throw new Error('Pagina niet gevonden');
-    return { title: text(p.title.rendered), html: p.content.rendered, link: p.link };
-  });
 }
 
 /** Recente foto's uit de mediabibliotheek. */

@@ -285,8 +285,7 @@ async function viewMedia() {
     ${section("Foto's")}
     <div class="grid" id="photos">${loading()}</div>
     ${section('Wedstrijdverslagen', '#/verslagen')}
-    <div class="posts" id="verslagen">${loading()}</div>
-    <a class="card hint" href="#/pagina/verzoek-mediateam"><b>Foto's of een verslag nodig?</b><span class="muted">Doe een aanvraag bij het web- en mediateam.</span></a>`;
+    <div class="posts" id="verslagen">${loading()}</div>`;
   fillPosts(document.getElementById('verslagen'), { category: CAT_VERSLAGEN, perPage: 3 });
   const el = document.getElementById('photos');
   try {
@@ -390,32 +389,7 @@ async function viewClub() {
     <h1 class="paginakop">Over de club</h1>
     <div class="stats"><span><b>1953</b><small>opgericht</small></span><span><b>${c.teams}</b><small>teams</small></span><span><b>${esc(c.members)}</b><small>leden</small></span></div>
     <div class="card pad-l">${c.about.map((p) => `<p>${esc(p)}</p>`).join('')}</div>
-    ${section('Clubinformatie')}
-    <div class="card list">${c.pages.map(([label, slug]) => `<a class="nav-row" href="#/pagina/${esc(slug)}"><span>${esc(label)}</span><span aria-hidden="true">›</span></a>`).join('')}</div>
-    <div class="cta-duo">
-      <a class="card cta" href="#/pagina/lid-worden"><b>Word lid</b><small>Eerst drie keer gratis meetrainen.</small></a>
-      <a class="card cta" href="#/contact"><b>Word vrijwilliger</b><small>Zonder vrijwilligers geen club.</small></a>
-    </div>`;
-}
-
-async function viewPagina(slug) {
-  $view.innerHTML = loading();
-  try {
-    const p = await api.page(slug);
-    setTitle(p.title);
-    // De meeste infopagina's komen nu uit het thema en hebben geen eigen inhoud in WordPress.
-    // Tot het app-endpoint ze levert, verwijzen we naar de website.
-    if (!api.text(p.html)) {
-      $view.innerHTML = `<article class="artikel"><h1>${esc(p.title)}</h1>
-        <div class="card hint"><b>Deze pagina staat op de website</b><span class="muted">In de volgende versie van de app lees je hem hier.</span></div>
-        <div class="art-acties"><a class="btn" href="${esc(p.link)}" target="_blank" rel="noopener">Open ${esc(p.title)} →</a></div></article>`;
-      return;
-    }
-    $view.innerHTML = `<article class="artikel"><h1>${esc(p.title)}</h1><div class="prose">${api.cleanHtml(p.html)}</div>
-      <div class="art-acties"><a class="btn ghost" href="${esc(p.link)}" target="_blank" rel="noopener">Op de website</a></div></article>`;
-  } catch {
-    $view.innerHTML = errorBox('Deze pagina kon niet geladen worden.') + `<p class="pad"><a href="${SITE}/${esc(slug)}/" target="_blank" rel="noopener">Open op de website →</a></p>`;
-  }
+    <a class="btn ghost wide" href="${SITE}/de-club/" target="_blank" rel="noopener">Meer over de club op de website</a>`;
 }
 
 async function viewSponsoren() {
@@ -447,8 +421,7 @@ async function viewAgenda() {
   $view.innerHTML = `
     <h1 class="paginakop">Agenda</h1>
     <p class="lead">Alle activiteiten naast het voetbal: van pubquiz tot jeugdtoernooi.</p>
-    ${list.length ? `<div class="card list">${list.map(agendaRow).join('')}</div>` : '<p class="muted">Geen activiteiten gepland.</p>'}
-    <a class="card hint" href="#/pagina/roosters"><b>Roosters</b><span class="muted">Kantinediensten, bestuurskamer en schoonmaak.</span></a>`;
+    ${list.length ? `<div class="card list">${list.map(agendaRow).join('')}</div>` : '<p class="muted">Geen activiteiten gepland.</p>'}`;
 }
 
 async function viewContact() {
@@ -493,7 +466,7 @@ function viewMeer() {
     ['#/verslagen', 'Wedstrijdverslagen', 'De verhalen van het veld'],
     ['#/media', 'Media', "Foto's, video's en Instagram"],
     ['#/agenda', 'Agenda', 'Activiteiten van de club'],
-    ['#/club', 'Over de club', 'Geschiedenis, bestuur en info'],
+    ['#/club', 'Over de club', 'Geschiedenis en sportpark'],
     ['#/sponsoren', 'Sponsoren', 'Onze partners en pakketten'],
     ['#/contact', 'Contact', 'Adres, kantine en route'],
   ];
@@ -548,7 +521,6 @@ const routes = [
   [/^\/teams\/([\w-]+)$/, 'teams', (s) => viewTeam(s), true],
   [/^\/elspeet-1$/, 'meer', viewElspeet1],
   [/^\/club$/, 'meer', viewClub],
-  [/^\/pagina\/([\w-]+)$/, 'meer', (s) => viewPagina(s), true],
   [/^\/sponsoren$/, 'meer', viewSponsoren],
   [/^\/agenda$/, 'meer', viewAgenda],
   [/^\/contact$/, 'meer', viewContact],

@@ -4,6 +4,10 @@ Een app voor leden, ouders, supporters en sponsors, gebouwd op de nieuwe website
 
 Het is een **aparte app naast Elspeet Fluit**: eigen naam, eigen icoon op het beginscherm, eigen bestanden. Er wordt niets gedeeld met de Fluit-app, dus deze map kan zo naar een eigen repository.
 
+De app bevat **alleen deze tien onderdelen**: Programma en uitslagen, Nieuws, Wedstrijdverslagen, Media, Teams, Elspeet 1, Over de club, Sponsoren, Agenda en Contact. Al het andere (bestuur, contributie, roosters, ledenshop, …) blijft alleen op de website.
+
+Adres: **app.vv-elspeet.nl**.
+
 Er staat al een werkend prototype in deze map (`club/`).
 
 ## Uitgangspunten
@@ -23,50 +27,59 @@ Onder *Meer*: Elspeet 1, Wedstrijdverslagen, Media, Agenda, Over de club, Sponso
 
 | Onderdeel | Wat je ziet | Bron |
 |---|---|---|
-| **Home** | Volgende wedstrijd van Elspeet 1 met aftellen en *In agenda*, laatste uitslag, snelknoppen, je gevolgde teams, laatste 3 nieuwsberichten, eerstvolgende activiteiten, sponsorlogo's | Alles hieronder |
+| **Home** (startscherm) | Alleen een samenvatting van de onderdelen hieronder: volgende wedstrijd van Elspeet 1 met aftellen en *In agenda*, laatste uitslag, snelknoppen, je gevolgde teams, laatste 3 nieuwsberichten, eerstvolgende activiteiten, sponsorlogo's | Alles hieronder |
 | **Programma en uitslagen** | Wedstrijden per dag, filter op senioren/junioren/pupillen, afgelaste wedstrijden bovenaan. Tik op een wedstrijd voor veld, scheidsrechter en *In agenda* (.ics). Uitslagen in groen/geel/rood, plus de stand van Elspeet 1 | Sportlink, via de site |
 | **Nieuws** | Alle berichten met foto, filter op categorie, *Meer berichten*, volledig artikel in de app met *Delen* | WordPress (live) |
 | **Wedstrijdverslagen** | Nieuws gefilterd op de categorie Wedstrijdverslagen | WordPress (live) |
-| **Media** | Instagram @vvelspeet, fotogalerij uit de mediabibliotheek (tik voor groot), laatste verslagen, aanvraag bij het web- en mediateam | WordPress (live) |
+| **Media** | Instagram @vvelspeet, fotogalerij uit de mediabibliotheek (tik voor groot), laatste verslagen | WordPress (live) |
 | **Teams** | Alle 20 teams per leeftijdsgroep. Met ☆ volg je een team; het komt dan op Home. Per team: programma, uitslagen, stand en berichten uit de teamcategorie | Sportlink + WordPress |
 | **Elspeet 1** | Positie, punten en vorm (laatste 5), volgende wedstrijden, stand, uitslagen, verslagen, over het team, technische staf | Sportlink + WordPress |
-| **Over de club** | Geschiedenis, kerncijfers, links naar alle clubinfopagina's (bestuur, contributie, vertrouwenspersonen, AED, …), *Word lid* en *Word vrijwilliger* | Site |
-| **Sponsoren** | Alle sponsorlogo's, de pakketten (1 tot 5 sterren) en een knop om de sponsorcommissie te mailen | Site |
-| **Agenda** | Clubactiviteiten met datum en tijd, elk met *In agenda*. Link naar de roosters | Site |
+| **Over de club** | Geschiedenis, sportpark en kerncijfers. Voor de rest een link naar de website | Site |
+| **Sponsoren** | Alle sponsorlogo's samen in één overzicht, de pakketten (1 tot 5 sterren) en een knop om de sponsorcommissie te mailen | Site |
+| **Agenda** | Clubactiviteiten met datum en tijd, elk met *In agenda* | Site |
 | **Contact** | Knoppen Bellen, Mailen, Route en Instagram; adres, kantinetijden, parkeren, KNVB-code; berichtformulier | Site |
 
 ## Hoe de data binnenkomt
 
 1. **Nieuws, verslagen, foto's.** Komt live uit de standaard WordPress-API van de site. Werkt nu al.
 2. **Programma, uitslagen, standen, teams, agenda, sponsors.** Daarvoor komt één extra adres op de site: `/wp-json/vve/v1/app`. Een concept staat in [`wordpress/vve-app-api.php`](wordpress/vve-app-api.php). Het haalt Sportlink op en bewaart het 15 minuten. Zolang dat adres er niet is, gebruikt de app een momentopname van 19 oktober ([`data/snapshot.json`](data/snapshot.json)) en zegt dat er ook bij.
-3. **Infopagina's** (contributie, bestuur, …) staan nu in het thema, niet in de WordPress-editor. De app kan ze daarom nog niet lezen en opent ze voorlopig op de website. Het concept-endpoint levert ze via `/wp-json/vve/v1/pagina/<slug>`.
 
 ## Fasering
 
 **Fase 1: webapp (dit prototype afmaken)**
 - App-endpoint op de site zetten en testen met de Sportlink-clientcode (die heeft het thema al)
 - Teams, agenda, sponsors en clubinfo uit het thema via het endpoint leveren, zodat app en site altijd gelijk zijn
-- Op `app.vv-elspeet.nl` of een eigen pad zetten; nu kan het via GitHub Pages (`…/READ.md/club/`)
+- Eigen repository en online op `app.vv-elspeet.nl` (zie hieronder)
 
 **Fase 2: meer binding**
 - Pushmeldingen: uitslag en afgelasting van je gevolgde team, nieuw verslag van Elspeet 1 (techniek hebben we al in Elspeet Fluit)
 - Live tussenstand bij Elspeet 1 (ingevoerd door het mediateam)
 - Instagram-feed in de app
 - Selectie Elspeet 1 met foto's en rugnummers
-- Trainingsschema per team
 
 **Fase 3: in de stores**
 - Dezelfde code verpakken (bijv. met Capacitor) voor App Store en Play Store
-- Eventueel inloggen voor leden: rijschema's, kantinediensten, Elspeet Fluit erin opnemen
+
+## Besluiten
+
+- Elspeet 1 speelt in de **5e klasse**.
+- Sponsors staan **samen in één overzicht**, zonder indeling in niveaus.
+- De app komt op **app.vv-elspeet.nl**.
+- De **ledenshop** komt niet in de app.
+- Alleen de tien genoemde onderdelen; de rest blijft op de website.
 
 ## Open vragen
 
-1. **Klasse Elspeet 1:** de teampagina zegt *4e klasse*, de pagina Elspeet 1 zegt *5e klasse C*. Wat klopt?
-2. **Sponsors:** de logo's hebben geen namen of niveau. Willen we hoofdsponsor/jeugdhoofdsponsoren apart tonen? Dan graag die indeling.
-3. **Staf Elspeet 1:** staat overal op "Naam volgt".
-4. **Adres van de app:** eigen subdomein (bijv. `app.vv-elspeet.nl`) of onder de website?
-5. **Ledenshop:** welke link hoort erbij?
-6. **Contactformulier:** nu opent het je mailapp. Liever versturen via de site (zoals het formulier daar)?
+1. **Staf Elspeet 1:** staat overal op "Naam volgt".
+2. **Contactformulier:** nu opent het je mailapp. Liever versturen via de site (zoals het formulier daar)?
+
+## Online op app.vv-elspeet.nl
+
+1. Zet in de repository van de app **Settings → Pages → Source: GitHub Actions** aan.
+2. Maak bij de beheerder van het domein vv-elspeet.nl een DNS-record: `app` → **CNAME** → `<gebruikersnaam>.github.io`.
+3. Vul daarna in GitHub bij **Settings → Pages → Custom domain** `app.vv-elspeet.nl` in en zet **Enforce HTTPS** aan.
+
+Doe stap 3 pas als het DNS-record werkt, anders is de app even onbereikbaar.
 
 ## Prototype bekijken
 

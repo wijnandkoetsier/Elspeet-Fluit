@@ -257,11 +257,6 @@ main.in { animation: in .18s ease-out; }
 .nav-row span:first-child { display: grid; }
 .nav-row small { color: var(--grijs); font-size: 13px; }
 .nav-row > span:last-child { color: var(--grijs); font-size: 22px; }
-.cta-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
-.cta { display: grid; gap: 4px; padding: 14px; text-decoration: none; color: inherit; }
-.cta.card + .card { margin-top: 0; }
-.cta:first-child { background: var(--geel); border-color: var(--geel); }
-.cta small { color: var(--inkt-2); font-size: 13px; }
 
 /* Media */
 .insta { display: flex; align-items: center; gap: 12px; padding: 14px; text-decoration: none; color: inherit; }

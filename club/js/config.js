@@ -1,6 +1,6 @@
 // Instellingen van de clubapp.
 
-// De WordPress-site waar nieuws, verslagen, foto's en pagina's vandaan komen.
+// De WordPress-site waar nieuws, verslagen, en foto's vandaan komen.
 export const SITE = 'https://wijnandkoetsier.nl';
 
 // Programma, uitslagen, standen, teams, agenda en sponsors. Zolang dit endpoint nog niet

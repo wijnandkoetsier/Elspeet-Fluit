@@ -15,7 +15,6 @@
  *
  * Endpoints (alleen lezen, openbaar):
  *   GET /wp-json/vve/v1/app            alles voor de app in één antwoord (15 min gecachet)
- *   GET /wp-json/vve/v1/pagina/<slug>  de inhoud van een themapagina (bijv. contributie)
  */
 
 if (!defined('ABSPATH')) exit;
@@ -28,11 +27,6 @@ add_action('rest_api_init', function () {
         'methods' => 'GET',
         'permission_callback' => '__return_true',
         'callback' => 'vve_app_payload',
-    ]);
-    register_rest_route('vve/v1', '/pagina/(?P<slug>[a-z0-9-]+)', [
-        'methods' => 'GET',
-        'permission_callback' => '__return_true',
-        'callback' => 'vve_app_page',
     ]);
 });
 
@@ -167,27 +161,6 @@ function vve_app_sportlink(string $path, array $query): array
 function vve_app_short_date(string $date): string
 {
     return wp_date('D j M', strtotime($date));
-}
-
-/**
- * Inhoud van een themapagina voor de app. De pagina's van het thema hebben geen inhoud in de
- * editor, dus renderen we de pagina en knippen we <main> eruit.
- */
-function vve_app_page(WP_REST_Request $req)
-{
-    $page = get_page_by_path($req['slug']);
-    if (!$page || $page->post_status !== 'publish') return new WP_Error('niet_gevonden', 'Pagina niet gevonden', ['status' => 404]);
-
-    $key = 'vve_app_page_' . $page->ID . '_' . strtotime($page->post_modified_gmt);
-    $html = get_transient($key);
-    if ($html === false) {
-        $res = wp_remote_get(get_permalink($page), ['timeout' => 15]);
-        $body = is_wp_error($res) ? '' : wp_remote_retrieve_body($res);
-        $html = preg_match('#<main[^>]*>(.*)</main>#s', $body, $m) ? $m[1] : '';
-        $html = wp_kses_post($html);
-        set_transient($key, $html, HOUR_IN_SECONDS);
-    }
-    return ['title' => get_the_title($page), 'html' => $html, 'link' => get_permalink($page)];
 }
 
 // Cache legen zodra er in WordPress iets verandert dat de app toont.
