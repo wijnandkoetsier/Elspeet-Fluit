@@ -604,13 +604,14 @@ details.howto:not([open]) > summary { border-bottom: 0; }
 }
 .view-switch button.on { background: var(--accent); color: var(--accent-ink); }
 
-/* Beschikbaar: compacte kaart per dag. Datum links, Ja/Nee rechts; tijden eronder. */
+/* Beschikbaar: compacte kaart per dag. Datum links (tik = in-/uitklappen), Ja/Nee rechts; tijden eronder. */
 .av-intro { margin-bottom: 4px; font-size: .88rem; }
-.card.avail.compact { padding: 10px 12px; margin-bottom: 8px; box-shadow: inset 4px 0 0 var(--line); }
-.card.avail.compact.st-yes { box-shadow: inset 4px 0 0 var(--brand); }
-.card.avail.compact.st-no { box-shadow: inset 4px 0 0 var(--muted); }
+.card.avail.compact { padding: 10px 12px; margin-bottom: 8px; }
 .card.avail.compact.st-no .head b { color: var(--muted); }
-.card.avail.compact.st-todo { box-shadow: inset 4px 0 0 var(--accent); }
+button.av-toggle { appearance: none; border: 0; background: none; padding: 4px 0; margin: -4px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; flex: 1; display: flex; flex-direction: column; }
+.av-toggle b { display: inline-flex; align-items: center; gap: 6px; }
+.av-toggle .chev { display: inline-block; font-size: 1.2rem; color: var(--muted); transition: transform .2s; }
+.avail.open .av-toggle .chev { transform: rotate(90deg); }
 .av-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .avail.compact .head { margin: 0; min-width: 0; }
 .avail.compact .head b { font-size: 1rem; }

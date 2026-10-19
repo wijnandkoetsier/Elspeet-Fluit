@@ -1085,24 +1085,30 @@ function beschikbaarheid(view) {
   const dates = availabilityDates(state.data.matches);
   const av = (d) => state.data.availability.find((a) => a.referee_id === me && a.date === d);
   view.innerHTML = `
-    <p class="muted pad av-intro">Kun je fluiten? Tik per dag op <b>Ja</b> of <b>Nee</b>. Bij Ja kun je de aanvangstijden kiezen; niets gekozen = alle tijden. Alles wordt direct opgeslagen.</p>
+    <p class="muted pad av-intro">Kun je fluiten? Tik per dag op <b>Ja</b> of <b>Nee</b>; nog een keer tikken wist je keuze. Bij Ja tik je op de datum om de aanvangstijden te kiezen (niets gekozen = alle tijden). Alles wordt direct opgeslagen.</p>
     ${dates.map((d) => {
       const a = av(d);
       const n = ownMatchCount(d);
       const mine = state.data.matches.filter((m) => m.date === d && m.referee_id === me && m.published).length;
       const count = n ? plural(n, 'wedstrijd', 'wedstrijden') : 'Nog geen programma';
       const st = !a ? 'todo' : a.available ? 'yes' : 'no';
+      // With Ja there may be times to pick: the date folds them open and shut (shut by default).
+      const picker = a?.available && n ? availPicker(d, a, { compact: true }) : '';
+      const open = picker && state.avOpen?.has(d);
+      const summary = picker ? ` · ${a.times?.length ? a.times.join(', ') : 'alle tijden'}${a.max_matches ? ` · max ${a.max_matches}` : ''}` : '';
       return `
-        <section class="card avail compact st-${st}" data-date="${d}">
+        <section class="card avail compact st-${st} ${open ? 'open' : ''}" data-date="${d}">
           <div class="av-row">
-            <div class="head"><b>${fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')}</b>
-              <small class="muted">${count}${mine ? ` · jij fluit er ${mine}` : ''}</small></div>
+            ${picker ? `<button type="button" class="head av-toggle" data-fold aria-expanded="${!!open}">` : '<div class="head">'}
+              <b>${fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')}${picker ? `<span class="chev" aria-hidden="true">›</span>` : ''}</b>
+              <small class="muted">${count}${mine ? ` · jij fluit er ${mine}` : ''}${open ? '' : esc(summary)}</small>
+            ${picker ? '</button>' : '</div>'}
             <div class="seg yn" role="group" aria-label="Beschikbaar op ${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}">
               <button class="${a?.available ? 'on yes' : ''}" data-set="yes" aria-pressed="${!!a?.available}">✓ Ja</button>
               <button class="${a && !a.available ? 'on no' : ''}" data-set="no" aria-pressed="${!!(a && !a.available)}">✕ Nee</button>
             </div>
           </div>
-          ${a?.available && n ? availPicker(d, a, { compact: true }) : ''}
+          ${open ? picker : ''}
         </section>`;
     }).join('')}
     <section class="card">
@@ -1117,11 +1123,27 @@ function beschikbaarheid(view) {
     const base = () => av(d) || { referee_id: me, date: d, start_time: '', end_time: '', times: [], max_matches: null };
     card.querySelectorAll('[data-set]').forEach((b) => b.onclick = async () => {
       const yes = b.dataset.set === 'yes';
+      const cur = av(d);
+      // Tapping the chosen answer again clears it ("nog niet ingevuld").
+      if (cur && cur.available === yes) {
+        state.avOpen?.delete(d);
+        state.data.availability = state.data.availability.filter((x) => !(x.referee_id === me && x.date === d));
+        render();
+        return act(() => store.deleteAvailability(me, d));
+      }
       if (!yes && state.data.matches.some((m) => m.date === d && m.referee_id === me && m.published)
         && !await ask('Je bent die dag al aangesteld. Toch afmelden? De planner krijgt hiervan een melding.', 'Toch afmelden')) return;
-      const row = { ...base(), available: yes };
-      saveAv(row);
+      // Ja opens the times for that day.
+      state.avOpen ||= new Set();
+      if (yes) state.avOpen.add(d); else state.avOpen.delete(d);
+      saveAv({ ...base(), available: yes });
     });
+    const fold = card.querySelector('[data-fold]');
+    if (fold) fold.onclick = () => {
+      state.avOpen ||= new Set();
+      if (state.avOpen.has(d)) state.avOpen.delete(d); else state.avOpen.add(d);
+      render();
+    };
     card.querySelectorAll('[data-time], [data-step]').forEach((b) => b.onclick = () => saveAv({ ...base(), ...availPickerChange(d, base(), b) }));
   });
   $('#abs').onclick = async () => {
