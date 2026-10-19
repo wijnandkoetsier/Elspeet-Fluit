@@ -47,7 +47,7 @@ npx http-server -c-1 .
 1. Maak een project aan op [supabase.com](https://supabase.com).
 2. Ga naar **SQL Editor** → plak de inhoud van [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
 3. Ga naar **Authentication → URL Configuration** en zet de **Site URL** op het adres waar de app komt te staan (zie stap 2), bijvoorbeeld `https://<gebruiker>.github.io/READ.md/`.
-4. Ga naar **Authentication → Email Templates → Magic Link** en zet de code in de e-mail, zodat inloggen ook werkt vanuit de app op het beginscherm. Bijvoorbeeld:
+4. Ga naar **Authentication → Email Templates** en zet de code in de e-mail, zodat inloggen ook werkt vanuit de app op het beginscherm. Doe dit bij **Confirm signup** (de mail bij de allereerste keer inloggen) én bij **Magic Link** (alle keren daarna). Bijvoorbeeld:
    ```html
    <h2>Inloggen bij Elspeet Fluit</h2>
    <p>Je code is: <strong style="font-size:24px">{{ .Token }}</strong></p>
