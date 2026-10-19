@@ -2,6 +2,8 @@
 
 Een app voor leden, ouders, supporters en sponsors, gebouwd op de nieuwe website (nu op wijnandkoetsier.nl). We beginnen als **webapp** die je op het beginscherm van je telefoon zet, zonder App Store. Later kan dezelfde app in de App Store en Play Store.
 
+Het is een **aparte app naast Elspeet Fluit**: eigen naam, eigen icoon op het beginscherm, eigen bestanden. Er wordt niets gedeeld met de Fluit-app, dus deze map kan zo naar een eigen repository.
+
 Er staat al een werkend prototype in deze map (`club/`).
 
 ## Uitgangspunten
@@ -69,8 +71,9 @@ Onder *Meer*: Elspeet 1, Wedstrijdverslagen, Media, Agenda, Over de club, Sponso
 ## Prototype bekijken
 
 ```bash
+cd club
 npx http-server -c-1 .
-# open http://localhost:8080/club/
+# open http://localhost:8080/
 ```
 
 Na merge naar `main` staat het ook op GitHub Pages onder `/club/`.

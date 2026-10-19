@@ -2,8 +2,6 @@
 
 De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen vanaf je telefoon. Werkt in de browser en is te installeren op de telefoon (PWA), zonder App Store.
 
-> **Nieuw: clubapp.** In [`club/`](club/) staat een eerste voorstel en prototype voor de clubapp van V.V. Elspeet (programma, nieuws, teams en meer). Zie [`club/VOORSTEL.md`](club/VOORSTEL.md).
-
 ## Wat kan het?
 
 **Scheidsrechter**

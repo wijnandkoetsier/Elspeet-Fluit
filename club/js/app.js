@@ -42,7 +42,7 @@ function toggleFav(name) {
 const isOurs = (team) => /^elspeet\b/i.test(team);
 const initials = (team) => team.replace(/^(sv|vv|v\.v\.|sp)\s+/i, '').replace(/['’]\d+/g, '').trim().slice(0, 2).toUpperCase();
 const crest = (team) => isOurs(team)
-  ? '<img class="crest" src="../icons/logo.png" alt="">'
+  ? '<img class="crest" src="icons/logo.png" alt="">'
   : `<span class="crest ghost" aria-hidden="true">${esc(initials(team))}</span>`;
 
 function outcome(m) {
@@ -125,7 +125,7 @@ function bigMatch(m, label) {
 
 function postCard(p, { big = false } = {}) {
   return `<a class="post ${big ? 'big' : ''}" href="#/bericht/${p.id}">
-    ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : '<div class="post-noimg"><img src="../icons/logo.png" alt=""></div>'}
+    ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : '<div class="post-noimg"><img src="icons/logo.png" alt=""></div>'}
     <span class="post-txt"><small>${postDate(p.date)}</small><b>${esc(p.title)}</b>${big ? `<span class="muted clamp">${esc(p.excerpt)}</span>` : ''}</span>
   </a>`;
 }
@@ -326,7 +326,7 @@ async function viewTeam(slug) {
   const fav = isFav(t.name);
   $view.innerHTML = `
     <section class="team-kop">
-      <img src="../icons/logo.png" alt="">
+      <img src="icons/logo.png" alt="">
       <div><small>${esc(t.group)}</small><h1>${esc(t.name)}</h1><span class="muted">${esc(t.info)}</span></div>
     </section>
     <button type="button" class="btn ${fav ? 'ghost' : ''} wide" data-fav="${esc(t.name)}">${fav ? '★ Je volgt dit team' : '☆ Volg dit team'}</button>

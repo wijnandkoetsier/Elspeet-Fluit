@@ -3,7 +3,7 @@ const CACHE = 'vve-club-v1';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/club.css',
   'js/app.js', 'js/api.js', 'js/config.js', 'data/snapshot.json',
-  '../icons/logo.png', '../icons/icon-192.png', '../icons/apple-touch-icon.png',
+  'icons/logo.png', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
