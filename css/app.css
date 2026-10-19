@@ -603,3 +603,26 @@ details.howto:not([open]) > summary { border-bottom: 0; }
   font: inherit; font-size: .75rem; font-weight: 700; padding: 6px 10px; min-height: 32px; cursor: pointer;
 }
 .view-switch button.on { background: var(--accent); color: var(--accent-ink); }
+
+/* Beschikbaar: compacte kaart per dag. Datum links, Ja/Nee rechts; tijden eronder. */
+.av-intro { margin-bottom: 4px; font-size: .88rem; }
+.card.avail.compact { padding: 10px 12px; margin-bottom: 8px; box-shadow: inset 4px 0 0 var(--line); }
+.card.avail.compact.st-yes { box-shadow: inset 4px 0 0 var(--brand); }
+.card.avail.compact.st-no { box-shadow: inset 4px 0 0 var(--muted); }
+.card.avail.compact.st-no .head b { color: var(--muted); }
+.card.avail.compact.st-todo { box-shadow: inset 4px 0 0 var(--accent); }
+.av-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.avail.compact .head { margin: 0; min-width: 0; }
+.avail.compact .head b { font-size: 1rem; }
+.avail.compact .head small { font-size: .8rem; }
+.seg.yn { flex: none; gap: 6px; }
+.seg.yn button { min-height: 40px; padding: 6px 12px; font-size: .88rem; flex: none; }
+.av-pick.compact { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.av-pick.compact .chips { gap: 6px; }
+.av-pick.compact .chip.time { padding: 6px 10px; min-width: 0; font-size: .88rem; }
+.av-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; min-height: 32px; }
+.av-max-inline { display: inline-flex; align-items: center; gap: 6px; }
+.stepper.sm { border-radius: 10px; }
+.stepper.sm button { width: 34px; min-height: 32px; font-size: 1rem; }
+.stepper.sm b { min-width: 30px; font-size: .9rem; }
+.av-foot small { white-space: nowrap; }
