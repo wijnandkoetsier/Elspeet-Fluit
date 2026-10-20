@@ -18,7 +18,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - Speelduur per categorie automatisch ingevuld (bijv. O9 45 min, O13 65 min, senioren 105 min)
 - Scheidsrechters die in Sportlink al zijn aangesteld worden overgenomen
 - Wedstrijden markeren waarvoor de KNVB zelf aanstelt
-- **JO7**: een JO7-ochtend thuis wordt één kaartje met één scheidsrechter; de vier wedstrijden klap je eronder open. Een ochtend bij een andere club komt niet in de app. Thuis of uit bepaalt de koppeling met de accommodatie, plaats en het veld uit Sportlink (staat er "Elspeet" in, dan is het thuis)
+- **JO7**: alle JO7-wedstrijden thuis op één dag (alle teams samen) worden één kaartje met één scheidsrechter; de wedstrijden klap je eronder open. Een ochtend bij een andere club komt niet in de app. Thuis of uit bepaalt de koppeling met de accommodatie, plaats en het veld uit Sportlink (staat er "Elspeet" in, dan is het thuis)
 - Per wedstrijd een gerangschikte kandidatenlijst: beschikbaarheid, tijdconflicten, maximum per dag, voorkeuren en aantal wedstrijden dit seizoen
 - **Voorstel maken** vult de hele speeldag automatisch in als concept
 - **Publiceren** maakt de aanstellingen zichtbaar voor scheidsrechters

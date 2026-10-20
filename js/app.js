@@ -298,7 +298,8 @@ function partsList(m) {
   return `
     <details class="parts" data-parts="${m.id}" ${open ? 'open' : ''}>
       <summary>${plural(m.parts.length, 'wedstrijd', 'wedstrijden')}<span class="chev" aria-hidden="true">›</span></summary>
-      <ol>${m.parts.map((p) => `<li><b>${esc(p.time)}</b><span>tegen ${team(p.opponent || '–')}${p.field && p.field !== m.field ? ` · ${esc(p.field)}` : ''}</span></li>`).join('')}</ol>
+      <ol>${m.parts.map((p) => `<li><b>${esc(p.time)}</b><span>${p.home
+        ? `${team(p.home)} – ${team(p.away || '–')}` : `tegen ${team(p.opponent || '–')}`}${p.field && p.field !== m.field ? `<small>${esc(p.field)}</small>` : ''}</span></li>`).join('')}</ol>
     </details>`;
 }
 // Remember which JO7 cards are open (the list is redrawn often), and keep a tap on it from opening the row.
@@ -323,9 +324,9 @@ function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) 
       <div class="info">
         <div class="teams"><span class="home">${team(m.home)}</span>${m.parts?.length ? '<span class="away">Wedstrijden</span>' : m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
         <div class="sub">${labels ? `<span class="labels">${labels}</span>` : ''}${subParts(sub)}</div>
-        ${partsList(m)}
       </div>
       ${action}
+      ${partsList(m)}
     </div>`;
 }
 

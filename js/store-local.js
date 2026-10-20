@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v9';
+const KEY = 'scheidsapp-demo-v10';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -32,9 +32,12 @@ function seed() {
     mk(d2, '14:30', 'Elspeet 1', 'VV Oost 1', 'Hoofdveld', '1e'),
   ];
   // JO7-ochtend thuis: één wedstrijd met de vier wedstrijdjes erin (zoals de Sportlink-koppeling die maakt).
-  matches.push({ ...mk(d1, '09:00', 'Elspeet JO7-1', '', 'Veld 3', 'O7'), duration: 120, parts: [
-    { time: '09:00', opponent: 'SVO JO7-1', field: 'Veld 3' }, { time: '09:30', opponent: 'DOS JO7-1', field: 'Veld 3' },
-    { time: '10:00', opponent: 'Blauw Wit JO7-1', field: 'Veld 3' }, { time: '10:30', opponent: 'Fortuna JO7-1', field: 'Veld 3' }] });
+  matches.push({ ...mk(d1, '09:00', 'Elspeet O7', '', 'Veld 1 A1a, Veld 1 A1b', 'O7'), duration: 70, parts: [
+    { time: '09:00', home: 'Elspeet O7-1', away: 'Elspeet O7-2', field: 'Veld 1 A1a' },
+    { time: '09:20', home: 'Elspeet O7-1', away: 'Nunspeet O7-3', field: 'Veld 1 A1a' },
+    { time: '09:20', home: 'Elspeet O7-2', away: 'Hulshorst O7-2', field: 'Veld 1 A1b' },
+    { time: '09:40', home: 'Elspeet O7-1', away: 'Hulshorst O7-2', field: 'Veld 1 A1a' },
+    { time: '09:40', home: 'Elspeet O7-2', away: 'Nunspeet O7-3', field: 'Veld 1 A1b' }] });
   matches[6].duration = 105;
   matches[6].external_ref = true; // KNVB stelt aan
   const availability = [
