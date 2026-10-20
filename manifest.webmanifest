@@ -3,6 +3,7 @@
   "short_name": "Elspeet Fluit",
   "description": "Elspeet Fluit: planning en beschikbaarheid van de clubscheidsrechters van VV Elspeet",
   "lang": "nl",
+  "id": "./?app=elspeet-fluit",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
