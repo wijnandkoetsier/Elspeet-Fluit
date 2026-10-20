@@ -628,17 +628,22 @@ button.av-toggle { appearance: none; border: 0; background: none; padding: 4px 0
 .stepper.sm b { min-width: 30px; font-size: .9rem; }
 .av-foot small { white-space: nowrap; }
 
-/* JO7: één kaartje per team per dag, met de (vier) wedstrijden eronder */
-.mrow.bundle { align-items: start; }
-.mrow.bundle .t small { display: block; font-size: .72rem; font-weight: 600; color: var(--muted); margin-top: 2px; white-space: nowrap; }
-.mrow.bundle .info { grid-column: 2 / 4; }
-.bundle-list { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-.brow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--card); border: 0; font: inherit; color: inherit; text-align: left; }
-.brow + .brow { border-top: 1px solid var(--line); }
-button.brow { cursor: pointer; appearance: none; }
-button.brow:active { background: var(--soft); }
-.brow .bt { font-weight: 800; color: var(--brand); font-variant-numeric: tabular-nums; flex: none; width: 3em; }
-.brow .bo { flex: 1; min-width: 0; font-weight: 500; }
-.brow .bo small { display: block; font-size: .78rem; }
-.brow .bo .sub { margin-top: 2px; }
-.brow .btn.pill-btn { flex: none; }
+/* JO7: één kaartje voor de hele ochtend; de wedstrijden klappen eronder open */
+details.parts { margin-top: 8px; }
+details.parts > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: .85rem; font-weight: 700; color: var(--brand); padding: 4px 0; }
+details.parts > summary::-webkit-details-marker { display: none; }
+details.parts > summary .chev { display: inline-block; font-size: 1.1rem; transition: transform .2s; }
+details.parts[open] > summary .chev { transform: rotate(90deg); }
+details.parts ol { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+details.parts li { display: flex; gap: 10px; padding: 7px 10px; font-size: .88rem; }
+details.parts li + li { border-top: 1px solid var(--line); }
+details.parts li b { color: var(--brand); font-variant-numeric: tabular-nums; flex: none; width: 3em; }
+
+/* Overzicht: melding om de app op de telefoon te zetten */
+.install-banner { display: flex; gap: 12px; align-items: flex-start; }
+.install-banner .micon { flex: none; }
+.install-banner .info { flex: 1; min-width: 0; }
+.install-banner p { margin: 2px 0 8px; color: var(--muted); font-size: .88rem; }
+.install-banner .actions { display: flex; gap: 8px; margin: 0; }
+.install-banner .btn.small { min-height: 38px; }
+.mrow:has(details.parts[open]) { align-items: start; }

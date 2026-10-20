@@ -47,6 +47,9 @@ alter table public.matches add column if not exists source text not null default
 alter table public.matches add column if not exists match_type text;          -- 'Oefen', 'Beker' of leeg (competitie)
 alter table public.matches add column if not exists sportlink_referee text;   -- scheidsrechter volgens Sportlink
 alter table public.matches add column if not exists referee_from_sportlink boolean not null default false;
+-- JO7-ochtend: één wedstrijd in de app (één scheidsrechter), de losse wedstrijden staan hierin:
+-- [{"time": "09:00", "opponent": "SVO JO7-1", "field": "Veld 3", "code": "..."}, ...]
+alter table public.matches add column if not exists parts jsonb;
 -- Scheidsrechters die uit Sportlink zijn overgenomen worden herkend aan hun naam in Sportlink.
 alter table public.referees add column if not exists sportlink_name text;
 -- Rol: is_referee = kan worden ingepland (uit = alleen planner). invite_planner = wordt planner bij
@@ -368,8 +371,6 @@ begin
     select distinct on (r.id) r.id as referee_id, m.date
     from referees r
     join matches m on m.date between current_date + 1 and current_date + 7 and not m.external_ref
-      -- JO7 uit (veld zonder "Elspeet") heeft geen scheidsrechter van de club nodig; zie needsReferee() in js/logic.js.
-      and not (m.category = 'O7' and coalesce(m.field, '') !~* 'elspeet')
     where r.active and r.is_referee and r.user_id is not null
       and not exists (select 1 from availability a where a.referee_id = r.id and a.date = m.date)
       and not exists (select 1 from notifications n where n.referee_id = r.id and n.kind = 'reminder' and n.date = m.date)

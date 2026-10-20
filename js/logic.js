@@ -82,13 +82,12 @@ export function candidates(match, { referees, availability, matches, offers = []
     .sort((a, b) => a.score - b.score || a.referee.name.localeCompare(b.referee.name));
 }
 
-// JO7 plays a small tournament: four short matches on one Saturday at one club. Only when the field
-// says "Elspeet" is it at home; otherwise it is away (whoever is named first) and needs no referee from
-// the club. This only applies to JO7 (category O7). Same rule in remind_availability() in schema.sql.
-export const isJo7 = (m) => m.category === 'O7';
-export const isAwayJo7 = (m) => isJo7(m) && !/elspeet/i.test(m.field || '');
-// Does the club have to provide a referee? Not when the KNVB appoints one, nor for an away JO7.
-export const needsReferee = (m) => !m.external_ref && !isAwayJo7(m);
+// JO7 plays four short matches on one Saturday at one club. hosting/sportlink-sync.php leaves out the
+// mornings at another club and turns a home morning into one match with m.parts (one referee for all).
+// isAwayJo7 only catches older loose JO7 rows from before that: no parts and no "Elspeet" in the field.
+export const isAwayJo7 = (m) => m.category === 'O7' && !m.parts?.length && !!m.sportlink_code && !/elspeet/i.test(m.field || '');
+// Does the club have to provide a referee? Not when the KNVB appoints one.
+export const needsReferee = (m) => !m.external_ref;
 
 // Greedy proposal for all unassigned matches on a day. Returns [{matchId, refereeId}].
 export function proposeDay(date, data) {

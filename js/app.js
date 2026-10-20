@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, SPORTLINK_SYNC_URL, 
 import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
-  assignmentIssue, defaultDuration, fieldName, overlaps, isJo7, isAwayJo7, needsReferee,
+  assignmentIssue, defaultDuration, fieldName, overlaps, isAwayJo7, needsReferee,
   categoryGroups, prefState, togglePrefGroup, togglePrefTeam, prefLabel, upgradeCategory, upgradePrefs,
 } from './logic.js';
 
@@ -90,7 +90,9 @@ function derive() {
   if (!state.raw) return;
   const d = { ...state.raw };
   // Show fields the short way everywhere ("Veld 1-hoofdveld" → "Veld 1").
-  d.matches = d.matches.map((m) => ({ ...m, field: m.field ? fieldName(m.field) : m.field, category: upgradeCategory(m) }));
+  d.matches = d.matches.map((m) => ({ ...m, field: m.field ? fieldName(m.field) : m.field, category: upgradeCategory(m) }))
+    // JO7 bij een andere club staat niet in de app (oude losse rijen, tot de volgende Sportlink-ronde).
+    .filter((m) => !isAwayJo7(m));
   // Old categories (Senioren/Veteranen/Vrouwen) shown the new way until the database is migrated.
   d.referees = d.referees.map((r) => ({ ...r, pref_categories: upgradePrefs(r.pref_categories), avoid_categories: upgradePrefs(r.avoid_categories) }));
   if (viewRole() === 'referee') {
@@ -288,41 +290,25 @@ const team = (name) => esc(name).replace(/-/g, '\u2011');
 const SEP = '<span class="sep">·</span>';
 const subParts = (sub) => (sub ? sub.split(SEP).filter(Boolean).map((p, i) => `<span class="part${i ? ' dot' : ''}">${p}</span>`).join('') : '');
 
-// ---------- JO7: alle wedstrijden van één team op één dag in één kaartje ----------
-// Our own team in a JO7 match (Elspeet may be named first or second), and the other team.
-const clubTeam = (m) => (/elspeet/i.test(m.home) || !/elspeet/i.test(m.away || '') ? m.home : m.away);
-const opponent = (m) => (clubTeam(m) === m.home ? m.away : m.home) || '–';
-
-// Day list items: a single match ({ m }) or a JO7 team with its matches ({ g }), in time order.
-function bundleJo7(list) {
-  const out = [];
-  const groups = new Map();
-  for (const m of list) {
-    if (!isJo7(m)) { out.push({ m }); continue; }
-    const key = clubTeam(m).toLowerCase().replace(/\s+/g, ' ');
-    let g = groups.get(key);
-    if (!g) { g = { team: clubTeam(m), matches: [] }; groups.set(key, g); out.push({ g }); }
-    g.matches.push(m);
-  }
-  return out.map((x) => (x.g && x.g.matches.length === 1 ? { m: x.g.matches[0] } : x));
-}
-
-// One card for a JO7 team: times, home/away, field, then its matches (rowFn draws each one).
-function bundleRow(g, rowFn) {
-  const ms = g.matches;
-  const away = ms.every(isAwayJo7);
-  const fields = [...new Set(ms.map((m) => m.field).filter(Boolean))].join(', ');
-  const sub = [fields && esc(fields), plural(ms.length, 'wedstrijd', 'wedstrijden'), away ? 'geen scheids nodig' : ''].filter(Boolean).join(SEP);
+// JO7: one match in the app for the whole Saturday morning (made by hosting/sportlink-sync.php).
+// Its four short matches are in m.parts and fold open under the card.
+function partsList(m) {
+  if (!m.parts?.length) return '';
+  const open = state.openParts?.has(m.id);
   return `
-    <div class="mrow bundle ${away ? 'dim' : ''}">
-      <div class="t">${esc(ms[0].time)}<small>t/m ${esc(ms[ms.length - 1].time)}</small></div>
-      <div class="info">
-        <div class="teams"><span class="home">${team(g.team)}</span></div>
-        <div class="sub"><span class="labels"><span class="label">O7</span><span class="label ${away ? 'knvb' : 'type'}">${away ? 'Uit' : 'Thuis'}</span></span>${subParts(sub)}</div>
-      </div>
-      <div class="bundle-list">${ms.map(rowFn).join('')}</div>
-    </div>`;
+    <details class="parts" data-parts="${m.id}" ${open ? 'open' : ''}>
+      <summary>${plural(m.parts.length, 'wedstrijd', 'wedstrijden')}<span class="chev" aria-hidden="true">›</span></summary>
+      <ol>${m.parts.map((p) => `<li><b>${esc(p.time)}</b><span>tegen ${team(p.opponent || '–')}${p.field && p.field !== m.field ? ` · ${esc(p.field)}` : ''}</span></li>`).join('')}</ol>
+    </details>`;
 }
+// Remember which JO7 cards are open (the list is redrawn often), and keep a tap on it from opening the row.
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.dataset.parts) return;
+  state.openParts ||= new Set();
+  if (d.open) state.openParts.add(d.dataset.parts); else state.openParts.delete(d.dataset.parts);
+}, true);
+document.addEventListener('click', (e) => { if (e.target.closest?.('details.parts')) e.stopPropagation(); }, true);
 
 // One compact row in a day list: time | teams + labels / details | action.
 function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) {
@@ -330,14 +316,14 @@ function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) 
     m.category && `<span class="label">${esc(m.category)}</span>`,
     m.match_type && `<span class="label type">${esc(m.match_type)}</span>`,
     m.external_ref && '<span class="label knvb">KNVB</span>',
-    isJo7(m) && `<span class="label ${isAwayJo7(m) ? 'knvb' : 'type'}">${isAwayJo7(m) ? 'Uit' : 'Thuis'}</span>`,
   ].filter(Boolean).join('');
   return `
     <div class="mrow ${needsReferee(m) ? '' : 'dim'}" ${attrs}>
       <div class="t">${esc(time)}</div>
       <div class="info">
-        <div class="teams"><span class="home">${team(m.home)}</span>${m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
+        <div class="teams"><span class="home">${team(m.home)}</span>${m.parts?.length ? '<span class="away">Wedstrijden</span>' : m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
         <div class="sub">${labels ? `<span class="labels">${labels}</span>` : ''}${subParts(sub)}</div>
+        ${partsList(m)}
       </div>
       ${action}
     </div>`;
@@ -429,13 +415,10 @@ function planning(view) {
     || (filter === 'concept' && m.referee_id && !m.published));
 
   // Status and button for one match (also used for the matches inside a JO7 card).
-  const cell = (m, withField = true) => {
-    const parts = withField && m.field ? [esc(m.field)] : [];
+  const cell = (m) => {
+    const parts = m.field ? [esc(m.field)] : [];
     let action = '';
-    if (isAwayJo7(m)) {
-      // In the JO7 card the header already says so.
-      if (withField) parts.push('Uit, geen scheids nodig');
-    } else if (m.external_ref) {
+    if (m.external_ref) {
       parts.push(m.sportlink_referee ? `KNVB: ${esc(m.sportlink_referee)}` : 'KNVB stelt aan');
     } else if (m.referee_id) {
       const issue = assignmentIssue(m, state.data);
@@ -453,11 +436,7 @@ function planning(view) {
     }
     return { sub: parts.join(SEP), action };
   };
-  const rows = bundleJo7(shown).map((x) => (x.g
-    ? bundleRow(x.g, (m) => { const c = cell(m, false); return `
-        <div class="brow"><span class="bt">${esc(m.time)}</span>
-          <div class="bo">tegen ${team(opponent(m))}${c.sub ? `<div class="sub">${subParts(c.sub)}</div>` : ''}</div>${c.action}</div>`; })
-    : matchRow(x.m, cell(x.m)))).join('') || `<p class="muted list-empty">${dayMatches.length ? 'Geen wedstrijden in deze selectie.' : 'Geen wedstrijden op deze dag.'}</p>`;
+  const rows = shown.map((m) => matchRow(m, cell(m))).join('') || `<p class="muted list-empty">${dayMatches.length ? 'Geen wedstrijden in deze selectie.' : 'Geen wedstrijden op deze dag.'}</p>`;
 
   const issues = own.filter((m) => assignmentIssue(m, state.data)).length;
   const pill = !own.length ? '' : `${issues ? `<span class="pill issue">${issues} ${issues === 1 ? 'probleem' : 'problemen'}</span>` : ''}${open.length ? `<span class="pill open">${open.length} open</span>` : issues ? '' : '<span class="pill done">Alles ingevuld</span>'}`;
@@ -707,15 +686,11 @@ function wedstrijden(view) {
     ${dayList(
       fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }),
       `<span class="pill">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>`,
-      bundleJo7(ms).map((x) => (x.g
-        ? bundleRow(x.g, (m) => `
-          <button type="button" class="brow tap" data-edit="${m.id}"><span class="bt">${esc(m.time)}</span>
-            <span class="bo">tegen ${team(opponent(m))}<small class="muted">${esc(`${m.duration || 90} min`)}</small></span><span class="chev" aria-hidden="true">›</span></button>`)
-        : matchRow(x.m, {
-          sub: [x.m.field, `${x.m.duration || 90} min`, x.m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join(SEP),
-          action: '<span class="chev" aria-hidden="true">›</span>',
-          attrs: `data-edit="${x.m.id}" role="button" tabindex="0"`,
-        }))).join('') || '<p class="muted list-empty">Geen wedstrijden op deze dag.</p>',
+      ms.map((m) => matchRow(m, {
+        sub: [m.field, `${m.duration || 90} min`, m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join(SEP),
+        action: '<span class="chev" aria-hidden="true">›</span>',
+        attrs: `data-edit="${m.id}" role="button" tabindex="0"`,
+      })).join('') || '<p class="muted list-empty">Geen wedstrijden op deze dag.</p>',
     )}`;
   bindDateNav(view, days, day);
   $('#add-match').onclick = () => matchForm({ date: day, time: '10:00', duration: 60 });
@@ -1005,6 +980,7 @@ function overzicht(view) {
 
   view.innerHTML = `
     ${heroCard('scheidsrechter', 'Klaar voor de volgende speeldag? Bekijk wanneer je mag fluiten.')}
+    ${installBanner()}
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
     ${todo.length ? `<a class="card warn tap block icon-label" href="#beschikbaarheid">${ICONS.calendar}<span>Vul je beschikbaarheid in voor ${todo.length === 1 ? fmtDate(todo[0], { weekday: 'long', day: 'numeric', month: 'long' }) : plural(todo.length, 'dag', 'dagen')}</span>${ICONS.arrow}</a>` : ''}
     ${dayList('Ik fluit', `<span class="pill ${mine.length ? 'done' : ''}">${mine.length} komend</span>`,
@@ -1023,6 +999,7 @@ function overzicht(view) {
 
   view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () => calendarSheet(matches.find((x) => x.id === b.dataset.ics)));
   bindNotifRows(view);
+  bindInstallBanner(view);
   const showAll = $('#show-all-open'), showPref = $('#show-pref-open');
   if (showAll) showAll.onclick = () => { state.showAllOpen = true; render(); };
   if (showPref) showPref.onclick = () => { state.showAllOpen = false; render(); };
@@ -1259,6 +1236,34 @@ function voorkeuren(view) {
 }
 
 // How to put the app on the home screen, for the phone in hand (or both, on a computer).
+// Banner at the top of Overzicht (everyone, on a phone): put the app on the home screen.
+// Hidden once installed (opened from the home screen) or after "Later" (for two weeks, per device).
+const INSTALL_LATER_KEY = 'scheidsapp-installeren-later';
+function installBanner() {
+  const ua = navigator.userAgent;
+  const ios = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  const android = /android/i.test(ua);
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (standalone || (!ios && !android && !state.installPrompt)) return '';
+  try { if (Date.now() < Number(localStorage.getItem(INSTALL_LATER_KEY) || 0)) return ''; } catch {}
+  const how = state.installPrompt ? 'Eén tik, dan staat hij tussen je apps en krijg je meldingen.'
+    : ios ? `Tik in Safari op <b>Deel</b> <span class="inline-icon">${ICONS.share}</span> en kies <b>Zet op beginscherm</b>.`
+    : `Tik in Chrome op <b>⋮</b> en kies <b>App installeren</b>.`;
+  return `
+    <section class="card install-banner">
+      <span class="micon">${ICONS.phone}</span>
+      <div class="info"><b>Zet de app op je telefoon</b><p>${how}</p>
+        <div class="actions">${state.installPrompt ? '<button class="btn primary small" id="install-now">Installeren</button>' : ''}
+          <button class="btn ghost small" id="install-later">Later</button></div></div>
+    </section>`;
+}
+
+function bindInstallBanner(view) {
+  const now = $('#install-now', view), later = $('#install-later', view);
+  if (now) now.onclick = async () => { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; render(); };
+  if (later) later.onclick = () => { try { localStorage.setItem(INSTALL_LATER_KEY, String(Date.now() + 14 * 86400000)); } catch {} render(); };
+}
+
 function installCard() {
   const ua = navigator.userAgent;
   const ios = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
@@ -1468,6 +1473,7 @@ function plannerOverzicht(view) {
 
   view.innerHTML = `
     ${heroCard('planner', 'Wedstrijden, scheidsrechters en aanstellingen op één plek.')}
+    ${installBanner()}
     <details class="card day-list howto" ${state.howtoOpen ? 'open' : ''}>
       <summary class="day-head"><h2>Zo werkt het</h2><span class="chev" aria-hidden="true">›</span></summary>
       <ol class="steps">
@@ -1516,6 +1522,7 @@ function plannerOverzicht(view) {
       ${menuLink('profiel', ICONS.settings, 'Instellingen', 'Naam, telefoon, tekstgrootte, pushmeldingen, uitloggen')}
     </section>`;
   bindSportlink();
+  bindInstallBanner(view);
   $('#csv-import').onclick = importSheet;
   $('.howto', view).ontoggle = (e) => { state.howtoOpen = e.target.open; };
 }
@@ -1612,7 +1619,9 @@ function download(name, content, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; });
+// Chrome offers installing a little after loading: then show the Installeren button straight away.
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; if (store?.user && !document.querySelector('.sheet-wrap')) render(); });
+window.addEventListener('appinstalled', () => { state.installPrompt = null; if (store?.user) render(); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 applyTextSize();
