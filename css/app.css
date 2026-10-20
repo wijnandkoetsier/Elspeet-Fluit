@@ -638,6 +638,7 @@ details.parts ol { list-style: none; margin: 4px 0 0; padding: 0; border: 1px so
 details.parts li { display: flex; gap: 10px; padding: 7px 10px; font-size: .88rem; }
 details.parts li + li { border-top: 1px solid var(--line); }
 details.parts li b { color: var(--brand); font-variant-numeric: tabular-nums; flex: none; width: 3em; }
+details.parts li span small { display: block; color: var(--muted); font-size: .78rem; }
 
 /* Overzicht: melding om de app op de telefoon te zetten */
 .install-banner { display: flex; gap: 12px; align-items: flex-start; }
@@ -647,3 +648,4 @@ details.parts li b { color: var(--brand); font-variant-numeric: tabular-nums; fl
 .install-banner .actions { display: flex; gap: 8px; margin: 0; }
 .install-banner .btn.small { min-height: 38px; }
 .mrow:has(details.parts[open]) { align-items: start; }
+.mrow > details.parts { grid-column: 2 / -1; margin-top: 0; }

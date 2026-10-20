@@ -294,11 +294,11 @@ function map_match(array $r, string $club = ''): ?array
 }
 
 /**
- * JO7 speelt op een zaterdag vier korte wedstrijden bij één club.
+ * JO7 speelt op zaterdag een paar korte wedstrijden bij één club.
  * - Bij een andere club (geen "Elspeet" in accommodatie, plaats of veld): niet in de app.
- * - Thuis: alle wedstrijden van dat team op die dag worden één wedstrijd in de app, met één
- *   scheidsrechter. De losse wedstrijden staan in 'parts'.
- * Alle andere wedstrijden blijven zoals ze zijn. Zelfde regel als de JO7-kaart in js/app.js.
+ * - Thuis: alle JO7-wedstrijden van die dag (alle teams samen, bijv. O7-1 en O7-2) worden één
+ *   wedstrijd in de app, met één scheidsrechter. De losse wedstrijden staan in 'parts'.
+ * Alle andere wedstrijden blijven zoals ze zijn.
  */
 function combine_jo7(array $mapped, string $club): array
 {
@@ -307,29 +307,31 @@ function combine_jo7(array $mapped, string $club): array
     foreach ($mapped as $m) {
         if ($m['category'] !== 'O7') { $out[] = $m; continue; }
         if ($club !== '' && stripos($m['_venue'], $club) === false) continue; // uit → overslaan
-        $key = $m['date'] . '|' . mb_strtolower(preg_replace('/\s+/', ' ', $m['_own']));
-        $groups[$key][] = $m;
+        $groups[$m['date']][$m['sportlink_code']] = $m; // per dag, elke wedstrijd één keer
     }
-    foreach ($groups as $list) {
-        usort($list, fn($a, $b) => strcmp($a['time'], $b['time']));
+    foreach ($groups as $date => $list) {
+        $list = array_values($list);
+        usort($list, fn($a, $b) => strcmp($a['time'] . $a['home'], $b['time'] . $b['home']));
         $first = $list[0];
         $last = end($list);
-        $own = $first['_own'];
+        // "Elspeet O7-1" → "Elspeet O7": de naam voor alle JO7-teams samen.
+        $title = trim(preg_replace('/\s*-\s*\d+\w*$/u', '', $first['_own'])) ?: $first['_own'];
         [$h, $mi] = array_map('intval', explode(':', $last['time']));
         $endMin = min(23 * 60 + 59, $h * 60 + $mi + 30); // laatste wedstrijdje duurt ongeveer een half uur
         [$fh, $fm] = array_map('intval', explode(':', $first['time']));
         $parts = array_map(fn($m) => [
             'time' => $m['time'],
-            'opponent' => mb_strtolower($m['home']) === mb_strtolower($own) ? $m['away'] : $m['home'],
+            'home' => $m['home'],
+            'away' => $m['away'],
             'field' => $m['field'],
             'code' => $m['sportlink_code'],
         ], $list);
         $refs = array_values(array_filter(array_unique(array_map(fn($m) => $m['sportlink_referee'], $list))));
         $out[] = [
-            'sportlink_code' => 'JO7:' . $first['date'] . ':' . preg_replace('/[^a-z0-9]+/', '-', mb_strtolower($own)),
-            'date' => $first['date'],
+            'sportlink_code' => 'JO7:' . $date,
+            'date' => $date,
             'time' => $first['time'],
-            'home' => $own,
+            'home' => $title,
             'away' => '',
             'field' => implode(', ', array_values(array_unique(array_filter(array_map(fn($m) => $m['field'], $list))))),
             'category' => 'O7',
@@ -337,7 +339,7 @@ function combine_jo7(array $mapped, string $club): array
             'match_type' => $first['match_type'],
             'sportlink_referee' => $refs[0] ?? '',
             'parts' => $parts,
-            '_own' => $own,
+            '_own' => $title,
             '_venue' => $first['_venue'],
         ];
     }
