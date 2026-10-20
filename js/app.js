@@ -53,13 +53,15 @@ async function boot() {
   await refresh();
 }
 
-// ---------- Testen: wisselen tussen planner- en scheidsrechtersweergave ----------
-// Only for these accounts, and only when they are planner: a planner can look at the app the way a
-// referee sees it. It only changes what is shown; the database rights stay those of a planner.
-const VIEW_SWITCH_EMAILS = ['wijnandkoetsier@gmail.com'];
+// ---------- Wisselen tussen planner- en scheidsrechtersweergave ----------
+// For everyone who is planner and referee ("Allebei"): look at the app the way a referee sees it.
+// It only changes what is shown; the database rights stay those of a planner.
 const VIEW_KEY = 'scheidsapp-weergave';
-const canSwitchView = () => !!store.user && store.user.role === 'planner'
-  && VIEW_SWITCH_EMAILS.includes(String(store.user.email || '').trim().toLowerCase());
+const canSwitchView = () => {
+  if (!store.user || store.user.role !== 'planner' || !store.user.referee_id) return false;
+  const me = (state.raw?.referees || []).find((r) => r.id === store.user.referee_id);
+  return !!me && me.is_referee !== false;
+};
 function viewRole() {
   if (!store.user) return null;
   if (store.user.role !== 'planner') return 'referee';
