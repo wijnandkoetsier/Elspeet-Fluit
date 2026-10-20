@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v7';
+const KEY = 'scheidsapp-demo-v8';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -31,6 +31,11 @@ function seed() {
     mk(d2, '09:00', 'Elspeet O11-2', 'Zwart Geel O11-1', 'Veld 1', 'O11'),
     mk(d2, '14:30', 'Elspeet 1', 'VV Oost 1', 'Hoofdveld', '1e'),
   ];
+  // JO7 speelt vier korte wedstrijden op één ochtend: thuis (veld met "Elspeet") en uit bij een andere club.
+  [['09:00', 'SVO JO7-1'], ['09:30', 'DOS JO7-2'], ['10:00', 'Blauw Wit JO7-1'], ['10:30', 'Fortuna JO7-1']]
+    .forEach(([t, other]) => matches.push({ ...mk(d1, t, 'Elspeet JO7-1', other, 'Elspeet veld 3', 'O7'), duration: 25 }));
+  [['09:00', 'Rood Wit JO7-1', 'Elspeet JO7-1'], ['09:30', 'Elspeet JO7-1', 'Zwart Geel JO7-2'], ['10:00', 'Oost JO7-1', 'Elspeet JO7-1'], ['10:30', 'Elspeet JO7-1', 'Rood Wit JO7-2']]
+    .forEach(([t, h, a]) => matches.push({ ...mk(d2, t, h, a, 'Sportpark Rood Wit', 'O7'), duration: 25 }));
   matches[6].duration = 105;
   matches[6].external_ref = true; // KNVB stelt aan
   const availability = [

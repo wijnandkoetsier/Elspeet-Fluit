@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, SPORTLINK_SYNC_URL, 
 import { createLocalStore } from './store-local.js';
 import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
-  assignmentIssue, defaultDuration, fieldName, overlaps,
+  assignmentIssue, defaultDuration, fieldName, overlaps, isJo7, isAwayJo7, needsReferee,
   categoryGroups, prefState, togglePrefGroup, togglePrefTeam, prefLabel, upgradeCategory, upgradePrefs,
 } from './logic.js';
 
@@ -286,15 +286,52 @@ const team = (name) => esc(name).replace(/-/g, '\u2011');
 const SEP = '<span class="sep">·</span>';
 const subParts = (sub) => (sub ? sub.split(SEP).filter(Boolean).map((p, i) => `<span class="part${i ? ' dot' : ''}">${p}</span>`).join('') : '');
 
+// ---------- JO7: alle wedstrijden van één team op één dag in één kaartje ----------
+// Our own team in a JO7 match (Elspeet may be named first or second), and the other team.
+const clubTeam = (m) => (/elspeet/i.test(m.home) || !/elspeet/i.test(m.away || '') ? m.home : m.away);
+const opponent = (m) => (clubTeam(m) === m.home ? m.away : m.home) || '–';
+
+// Day list items: a single match ({ m }) or a JO7 team with its matches ({ g }), in time order.
+function bundleJo7(list) {
+  const out = [];
+  const groups = new Map();
+  for (const m of list) {
+    if (!isJo7(m)) { out.push({ m }); continue; }
+    const key = clubTeam(m).toLowerCase().replace(/\s+/g, ' ');
+    let g = groups.get(key);
+    if (!g) { g = { team: clubTeam(m), matches: [] }; groups.set(key, g); out.push({ g }); }
+    g.matches.push(m);
+  }
+  return out.map((x) => (x.g && x.g.matches.length === 1 ? { m: x.g.matches[0] } : x));
+}
+
+// One card for a JO7 team: times, home/away, field, then its matches (rowFn draws each one).
+function bundleRow(g, rowFn) {
+  const ms = g.matches;
+  const away = ms.every(isAwayJo7);
+  const fields = [...new Set(ms.map((m) => m.field).filter(Boolean))].join(', ');
+  const sub = [fields && esc(fields), plural(ms.length, 'wedstrijd', 'wedstrijden'), away ? 'geen scheids nodig' : ''].filter(Boolean).join(SEP);
+  return `
+    <div class="mrow bundle ${away ? 'dim' : ''}">
+      <div class="t">${esc(ms[0].time)}<small>t/m ${esc(ms[ms.length - 1].time)}</small></div>
+      <div class="info">
+        <div class="teams"><span class="home">${team(g.team)}</span></div>
+        <div class="sub"><span class="labels"><span class="label">O7</span><span class="label ${away ? 'knvb' : 'type'}">${away ? 'Uit' : 'Thuis'}</span></span>${subParts(sub)}</div>
+      </div>
+      <div class="bundle-list">${ms.map(rowFn).join('')}</div>
+    </div>`;
+}
+
 // One compact row in a day list: time | teams + labels / details | action.
 function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) {
   const labels = [
     m.category && `<span class="label">${esc(m.category)}</span>`,
     m.match_type && `<span class="label type">${esc(m.match_type)}</span>`,
     m.external_ref && '<span class="label knvb">KNVB</span>',
+    isJo7(m) && `<span class="label ${isAwayJo7(m) ? 'knvb' : 'type'}">${isAwayJo7(m) ? 'Uit' : 'Thuis'}</span>`,
   ].filter(Boolean).join('');
   return `
-    <div class="mrow ${m.external_ref ? 'dim' : ''}" ${attrs}>
+    <div class="mrow ${needsReferee(m) ? '' : 'dim'}" ${attrs}>
       <div class="t">${esc(time)}</div>
       <div class="info">
         <div class="teams"><span class="home">${team(m.home)}</span>${m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
@@ -336,7 +373,7 @@ function dateNav(days, day, { filter = null } = {}) {
   const firstSat = days.find((d) => d >= today && new Date(d + 'T12:00:00').getDay() === 6);
   const tile = (d) => {
     const ms = matches.filter((m) => m.date === d);
-    const hasOpen = ms.some((m) => !m.external_ref && !m.referee_id);
+    const hasOpen = ms.some((m) => needsReferee(m) && !m.referee_id);
     const hasIssue = ms.some((m) => assignmentIssue(m, state.data));
     const label = d === today ? 'Vandaag' : d === firstSat ? 'Deze zaterdag' : fmtDate(d, { weekday: 'short' });
     return `<button class="day-tile ${d === day ? 'on' : ''} ${d < today ? 'past' : ''}" data-day="${d}">
@@ -380,19 +417,23 @@ function planning(view) {
   const day = pickDay(days);
   const filter = state.filter || 'alle';
   const dayMatches = matches.filter((m) => m.date === day).sort((a, b) => a.time.localeCompare(b.time));
-  const own = dayMatches.filter((m) => !m.external_ref);
+  const own = dayMatches.filter(needsReferee);
   const open = own.filter((m) => !m.referee_id);
   const unpublished = own.filter((m) => m.referee_id && !m.published);
   const refName = (id) => referees.find((r) => r.id === id)?.name || '?';
 
   const shown = dayMatches.filter((m) => filter === 'alle'
-    || (filter === 'open' && !m.external_ref && !m.referee_id)
+    || (filter === 'open' && needsReferee(m) && !m.referee_id)
     || (filter === 'concept' && m.referee_id && !m.published));
 
-  const rows = shown.map((m) => {
-    const parts = m.field ? [esc(m.field)] : [];
+  // Status and button for one match (also used for the matches inside a JO7 card).
+  const cell = (m, withField = true) => {
+    const parts = withField && m.field ? [esc(m.field)] : [];
     let action = '';
-    if (m.external_ref) {
+    if (isAwayJo7(m)) {
+      // In the JO7 card the header already says so.
+      if (withField) parts.push('Uit, geen scheids nodig');
+    } else if (m.external_ref) {
       parts.push(m.sportlink_referee ? `KNVB: ${esc(m.sportlink_referee)}` : 'KNVB stelt aan');
     } else if (m.referee_id) {
       const issue = assignmentIssue(m, state.data);
@@ -408,8 +449,13 @@ function planning(view) {
       if (offeredBy.length) parts.push(`<span class="offer-text">${ICONS.hand}${esc(offeredBy.join(', '))} ${offeredBy.length === 1 ? 'biedt' : 'bieden'} zich aan</span>`);
       action = `<button class="btn pill-btn assign" data-assign="${m.id}">Toewijzen</button>`;
     }
-    return matchRow(m, { sub: parts.join(SEP), action });
-  }).join('') || `<p class="muted list-empty">${dayMatches.length ? 'Geen wedstrijden in deze selectie.' : 'Geen wedstrijden op deze dag.'}</p>`;
+    return { sub: parts.join(SEP), action };
+  };
+  const rows = bundleJo7(shown).map((x) => (x.g
+    ? bundleRow(x.g, (m) => { const c = cell(m, false); return `
+        <div class="brow"><span class="bt">${esc(m.time)}</span>
+          <div class="bo">tegen ${team(opponent(m))}${c.sub ? `<div class="sub">${subParts(c.sub)}</div>` : ''}</div>${c.action}</div>`; })
+    : matchRow(x.m, cell(x.m)))).join('') || `<p class="muted list-empty">${dayMatches.length ? 'Geen wedstrijden in deze selectie.' : 'Geen wedstrijden op deze dag.'}</p>`;
 
   const issues = own.filter((m) => assignmentIssue(m, state.data)).length;
   const pill = !own.length ? '' : `${issues ? `<span class="pill issue">${issues} ${issues === 1 ? 'probleem' : 'problemen'}</span>` : ''}${open.length ? `<span class="pill open">${open.length} open</span>` : issues ? '' : '<span class="pill done">Alles ingevuld</span>'}`;
@@ -439,11 +485,11 @@ function planning(view) {
 }
 
 // Matches on a day that the club plans itself (KNVB matches don't count).
-const ownMatchCount = (day) => state.data.matches.filter((m) => m.date === day && !m.external_ref).length;
+const ownMatchCount = (day) => state.data.matches.filter((m) => m.date === day && needsReferee(m)).length;
 
 // Kick-off times on a day (the choices when giving availability).
 const kickoffTimes = (day) => [...new Set(state.data.matches
-  .filter((m) => m.date === day && !m.external_ref).map((m) => m.time))].sort();
+  .filter((m) => m.date === day && needsReferee(m)).map((m) => m.time))].sort();
 
 // "Op welke tijden kun je?" chips and the max-per-day stepper; empty selection = all times.
 function availPicker(day, a, { compact = false } = {}) {
@@ -659,11 +705,15 @@ function wedstrijden(view) {
     ${dayList(
       fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }),
       `<span class="pill">${ms.length} ${ms.length === 1 ? 'wedstrijd' : 'wedstrijden'}</span>`,
-      ms.map((m) => matchRow(m, {
-        sub: [m.field, `${m.duration || 90} min`, m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join(SEP),
-        action: '<span class="chev" aria-hidden="true">›</span>',
-        attrs: `data-edit="${m.id}" role="button" tabindex="0"`,
-      })).join('') || '<p class="muted list-empty">Geen wedstrijden op deze dag.</p>',
+      bundleJo7(ms).map((x) => (x.g
+        ? bundleRow(x.g, (m) => `
+          <button type="button" class="brow tap" data-edit="${m.id}"><span class="bt">${esc(m.time)}</span>
+            <span class="bo">tegen ${team(opponent(m))}<small class="muted">${esc(`${m.duration || 90} min`)}</small></span><span class="chev" aria-hidden="true">›</span></button>`)
+        : matchRow(x.m, {
+          sub: [x.m.field, `${x.m.duration || 90} min`, x.m.sportlink_code ? 'Sportlink' : ''].filter(Boolean).map(esc).join(SEP),
+          action: '<span class="chev" aria-hidden="true">›</span>',
+          attrs: `data-edit="${x.m.id}" role="button" tabindex="0"`,
+        }))).join('') || '<p class="muted list-empty">Geen wedstrijden op deze dag.</p>',
     )}`;
   bindDateNav(view, days, day);
   $('#add-match').onclick = () => matchForm({ date: day, time: '10:00', duration: 60 });
@@ -922,7 +972,7 @@ function overzicht(view) {
   const myDay = matches.filter((m) => m.referee_id === me && m.date >= today);
   // Open = no published referee yet, and kick-off still to come.
   const now = nowHM();
-  const allOpen = matches.filter((m) => !m.referee_id && !m.external_ref && m.date <= until
+  const allOpen = matches.filter((m) => !m.referee_id && needsReferee(m) && m.date <= until
     && (m.date > today || (m.date === today && m.time > now))).sort(byTime);
   // Only what this referee likes to whistle ("Wat fluit je graag?" in Instellingen), unless they ask for all.
   const prefs = state.data.referees.find((r) => r.id === me)?.pref_categories || [];
@@ -1401,7 +1451,7 @@ function plannerOverzicht(view) {
   const { matches, referees, notifications } = state.data;
   const offers = state.data.offers || [];
   const coming = matches.filter((m) => m.date >= today);
-  const open = coming.filter((m) => !m.referee_id && !m.external_ref);
+  const open = coming.filter((m) => !m.referee_id && needsReferee(m));
   const concept = coming.filter((m) => m.referee_id && !m.published);
   const issues = coming.filter((m) => assignmentIssue(m, state.data)).length;
   const offered = open.filter((m) => offers.some((o) => o.match_id === m.id)).length;

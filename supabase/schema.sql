@@ -368,6 +368,8 @@ begin
     select distinct on (r.id) r.id as referee_id, m.date
     from referees r
     join matches m on m.date between current_date + 1 and current_date + 7 and not m.external_ref
+      -- JO7 uit (veld zonder "Elspeet") heeft geen scheidsrechter van de club nodig; zie needsReferee() in js/logic.js.
+      and not (m.category = 'O7' and coalesce(m.field, '') !~* 'elspeet')
     where r.active and r.is_referee and r.user_id is not null
       and not exists (select 1 from availability a where a.referee_id = r.id and a.date = m.date)
       and not exists (select 1 from notifications n where n.referee_id = r.id and n.kind = 'reminder' and n.date = m.date)

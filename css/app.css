@@ -627,3 +627,18 @@ button.av-toggle { appearance: none; border: 0; background: none; padding: 4px 0
 .stepper.sm button { width: 34px; min-height: 32px; font-size: 1rem; }
 .stepper.sm b { min-width: 30px; font-size: .9rem; }
 .av-foot small { white-space: nowrap; }
+
+/* JO7: één kaartje per team per dag, met de (vier) wedstrijden eronder */
+.mrow.bundle { align-items: start; }
+.mrow.bundle .t small { display: block; font-size: .72rem; font-weight: 600; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.mrow.bundle .info { grid-column: 2 / 4; }
+.bundle-list { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.brow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--card); border: 0; font: inherit; color: inherit; text-align: left; }
+.brow + .brow { border-top: 1px solid var(--line); }
+button.brow { cursor: pointer; appearance: none; }
+button.brow:active { background: var(--soft); }
+.brow .bt { font-weight: 800; color: var(--brand); font-variant-numeric: tabular-nums; flex: none; width: 3em; }
+.brow .bo { flex: 1; min-width: 0; font-weight: 500; }
+.brow .bo small { display: block; font-size: .78rem; }
+.brow .bo .sub { margin-top: 2px; }
+.brow .btn.pill-btn { flex: none; }

@@ -82,11 +82,19 @@ export function candidates(match, { referees, availability, matches, offers = []
     .sort((a, b) => a.score - b.score || a.referee.name.localeCompare(b.referee.name));
 }
 
+// JO7 plays a small tournament: four short matches on one Saturday at one club. Only when the field
+// says "Elspeet" is it at home; otherwise it is away (whoever is named first) and needs no referee from
+// the club. This only applies to JO7 (category O7). Same rule in remind_availability() in schema.sql.
+export const isJo7 = (m) => m.category === 'O7';
+export const isAwayJo7 = (m) => isJo7(m) && !/elspeet/i.test(m.field || '');
+// Does the club have to provide a referee? Not when the KNVB appoints one, nor for an away JO7.
+export const needsReferee = (m) => !m.external_ref && !isAwayJo7(m);
+
 // Greedy proposal for all unassigned matches on a day. Returns [{matchId, refereeId}].
 export function proposeDay(date, data) {
   const working = data.matches.map((m) => ({ ...m }));
   const proposal = [];
-  const todo = working.filter((m) => m.date === date && !m.referee_id && !m.external_ref)
+  const todo = working.filter((m) => m.date === date && !m.referee_id && needsReferee(m))
     .sort((a, b) => toMin(a.time) - toMin(b.time));
   for (const m of todo) {
     const best = candidates(m, { ...data, matches: working }).find((c) => c.status === 'ok');
@@ -274,7 +282,7 @@ export function unavailableNotification(prev, row, matches, refereeName) {
 
 // Why the referee assigned to a match can no longer do it (null when fine).
 export function assignmentIssue(m, data) {
-  if (!m.referee_id || m.external_ref) return null;
+  if (!m.referee_id || !needsReferee(m)) return null;
   const c = candidates(m, data).find((x) => x.referee.id === m.referee_id);
   if (!c) return ['Niet meer actief'];
   return c.status === 'no' ? c.reasons.filter((r) => !/graag|liever/i.test(r)) : null;
