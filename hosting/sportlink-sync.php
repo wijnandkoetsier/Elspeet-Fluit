@@ -146,12 +146,13 @@ function authorize(array $c): string
 
 // ---------- Sportlink ----------
 
-function fetch_sportlink(array $c): array
+/** Programma uit Sportlink. Standaard de thuiswedstrijden; met $away = true de uitwedstrijden. */
+function fetch_sportlink(array $c, bool $away = false): array
 {
     $query = http_build_query([
         'client_id' => $c['sportlink_client_id'],
-        'thuis' => 'JA',
-        'uit' => 'NEE',
+        'thuis' => $away ? 'NEE' : 'JA',
+        'uit' => $away ? 'JA' : 'NEE',
         'eigenwedstrijden' => 'JA',
         'gebruiklokaleteamgegevens' => 'NEE',
         'aantaldagen' => min(42, max(1, (int) $c['days_ahead'])),
@@ -247,7 +248,10 @@ function map_match(array $r, string $club = ''): ?array
     }
 
     // Oefenwedstrijden met een lokaal team heten soms alleen "JO8-1": zet de clubnaam ervoor.
-    if ($club !== '' && stripos($home, $club) === false) $home = "$club $home";
+    // Alleen bij zo'n kale teamcode, niet bij een team van een andere club ("Nunspeet JO7-2").
+    $away = pick($r, ['uitteam', 'uitteamnaam', 'uit']) ?? '';
+    $bare = fn(string $t) => (bool) preg_match('/^\s*([JM]?O\s?\d{1,2}|VR|\d)/i', $t);
+    if ($club !== '' && stripos($home, $club) === false && stripos($away, $club) === false && $bare($home)) $home = "$club $home";
 
     // Scheidsrechter zoals Sportlink die kent (bijv. door de KNVB of in Sportlink aangesteld).
     $ref = pick($r, ['scheidsrechter', 'scheidsrechters']);
@@ -257,20 +261,79 @@ function map_match(array $r, string $club = ''): ?array
     $type = preg_match('/oefen/i', $kind) ? 'Oefen' : (preg_match('/beker/i', $kind) ? 'Beker' : '');
 
     $field = clean_field(pick($r, ['veld', 'veldnaam', 'accommodatieveld']) ?? '');
-    $category = category_from_team($home);
+    // Ons eigen team staat niet altijd voorop (bij JO7-ochtenden en uitwedstrijden).
+    $own = ($club !== '' && stripos($home, $club) === false && stripos($away, $club) !== false) ? $away : $home;
+    $category = category_from_team($own);
+    // Waar wordt gespeeld: accommodatie en plaats uit Sportlink, plus het veld (voor thuis/uit bij de JO7).
+    $venue = trim(implode(' ', array_filter([pick($r, ['accommodatie', 'accommodatienaam']), pick($r, ['plaats', 'locatie', 'adres']), $field])));
 
     return [
         'sportlink_code' => $code,
         'date' => $date,
         'time' => $time,
         'home' => $home,
-        'away' => pick($r, ['uitteam', 'uitteamnaam', 'uit']) ?? '',
+        'away' => $away,
         'field' => $field ?? '',
         'category' => $category,
         'duration' => default_duration($category),
         'match_type' => $type,
         'sportlink_referee' => $ref ?: '',
+        'parts' => null, // alleen bij een JO7-ochtend (zie combine_jo7); alle rijen moeten dezelfde velden hebben
+        '_own' => $own,
+        '_venue' => $venue,
     ];
+}
+
+/**
+ * JO7 speelt op een zaterdag vier korte wedstrijden bij één club.
+ * - Bij een andere club (geen "Elspeet" in accommodatie, plaats of veld): niet in de app.
+ * - Thuis: alle wedstrijden van dat team op die dag worden één wedstrijd in de app, met één
+ *   scheidsrechter. De losse wedstrijden staan in 'parts'.
+ * Alle andere wedstrijden blijven zoals ze zijn. Zelfde regel als de JO7-kaart in js/app.js.
+ */
+function combine_jo7(array $mapped, string $club): array
+{
+    $out = [];
+    $groups = [];
+    foreach ($mapped as $m) {
+        if ($m['category'] !== 'O7') { $out[] = $m; continue; }
+        if ($club !== '' && stripos($m['_venue'], $club) === false) continue; // uit → overslaan
+        $key = $m['date'] . '|' . mb_strtolower(preg_replace('/\s+/', ' ', $m['_own']));
+        $groups[$key][] = $m;
+    }
+    foreach ($groups as $list) {
+        usort($list, fn($a, $b) => strcmp($a['time'], $b['time']));
+        $first = $list[0];
+        $last = end($list);
+        $own = $first['_own'];
+        [$h, $mi] = array_map('intval', explode(':', $last['time']));
+        $endMin = min(23 * 60 + 59, $h * 60 + $mi + 30); // laatste wedstrijdje duurt ongeveer een half uur
+        [$fh, $fm] = array_map('intval', explode(':', $first['time']));
+        $parts = array_map(fn($m) => [
+            'time' => $m['time'],
+            'opponent' => mb_strtolower($m['home']) === mb_strtolower($own) ? $m['away'] : $m['home'],
+            'field' => $m['field'],
+            'code' => $m['sportlink_code'],
+        ], $list);
+        $refs = array_values(array_filter(array_unique(array_map(fn($m) => $m['sportlink_referee'], $list))));
+        $out[] = [
+            'sportlink_code' => 'JO7:' . $first['date'] . ':' . preg_replace('/[^a-z0-9]+/', '-', mb_strtolower($own)),
+            'date' => $first['date'],
+            'time' => $first['time'],
+            'home' => $own,
+            'away' => '',
+            'field' => implode(', ', array_values(array_unique(array_filter(array_map(fn($m) => $m['field'], $list))))),
+            'category' => 'O7',
+            'duration' => max(30, $endMin - ($fh * 60 + $fm)),
+            'match_type' => $first['match_type'],
+            'sportlink_referee' => $refs[0] ?? '',
+            'parts' => $parts,
+            '_own' => $own,
+            '_venue' => $first['_venue'],
+        ];
+    }
+    usort($out, fn($a, $b) => strcmp($a['date'] . $a['time'], $b['date'] . $b['time']));
+    return $out;
 }
 
 // ---------- Bijwerken ----------
@@ -353,7 +416,7 @@ function sync(array $c, array $feed): array
     $until = date('Y-m-d', strtotime('+' . min(42, (int) $c['days_ahead']) . ' days'));
     $knvbTeams = array_map('mb_strtolower', $c['knvb_teams'] ?? []);
 
-    $existing = supabase($c, 'GET', 'matches?select=id,sportlink_code,date,time,home,away,field,category,match_type,sportlink_referee,referee_id,published,referee_from_sportlink,external_ref&sportlink_code=not.is.null&date=gte.' . $today);
+    $existing = supabase($c, 'GET', 'matches?select=id,sportlink_code,date,time,duration,home,away,field,category,match_type,sportlink_referee,parts,referee_id,published,referee_from_sportlink,external_ref&sportlink_code=not.is.null&date=gte.' . $today);
     $manual = supabase($c, 'GET', 'matches?select=id,date,time,home,referee_id&sportlink_code=is.null&date=gte.' . $today);
     $refs = supabase($c, 'GET', 'referees?select=id,name,sportlink_name');
     $byCode = [];
@@ -385,6 +448,11 @@ function sync(array $c, array $feed): array
             if (empty($old['sportlink_code'])) $patch += ['sportlink_code' => $f['sportlink_code'], 'source' => 'sportlink'];
             foreach (['date', 'time', 'home', 'away', 'field', 'match_type', 'sportlink_referee'] as $k) {
                 if ((string) ($old[$k] ?? '') !== (string) $f[$k]) $patch[$k] = $f[$k];
+            }
+            // JO7-ochtend: de losse wedstrijden en de totale duur volgen Sportlink.
+            if (isset($f['parts'])) {
+                if (json_encode($old['parts'] ?? null) !== json_encode($f['parts'])) $patch['parts'] = $f['parts'];
+                if ((int) ($old['duration'] ?? 0) !== (int) $f['duration']) $patch['duration'] = $f['duration'];
             }
             // Leeg, of nog een oude categorie van vóór de indeling in teams.
             if (empty($old['category']) || in_array($old['category'], ['Senioren', 'Veteranen', 'Vrouwen', '45+'], true)) $patch['category'] = $f['category'];
@@ -448,11 +516,23 @@ try {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(204); exit; }
 
     $who = authorize($config);
+    $club = (string) $config['club_name'];
     $records = fetch_sportlink($config);
     $mapped = [];
     foreach ($records as $r) {
-        if (is_array($r) && ($m = map_match($r, (string) $config['club_name']))) $mapped[] = $m;
+        if (is_array($r) && ($m = map_match($r, $club))) $mapped[] = $m;
     }
+    // JO7: ook de "uit"-wedstrijden ophalen, want bij een JO7-ochtend thuis staat Elspeet soms als tweede.
+    $awayRecords = [];
+    try { $awayRecords = fetch_sportlink($config, true); } catch (Throwable $e) { /* thuisprogramma gaat voor */ }
+    $codes = array_flip(array_map(fn($m) => $m['sportlink_code'], $mapped));
+    foreach ($awayRecords as $r) {
+        if (is_array($r) && ($m = map_match($r, $club)) && $m['category'] === 'O7' && !isset($codes[$m['sportlink_code']])) $mapped[] = $m;
+    }
+    $jo7Raw = array_values(array_filter($mapped, fn($m) => $m['category'] === 'O7'));
+    $recognized = count($mapped);
+    $mapped = combine_jo7($mapped, $club);
+    $strip = fn(array $m) => array_diff_key($m, ['_own' => 1, '_venue' => 1]);
 
     if (($_GET['mode'] ?? '') === 'test') {
         $docroot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: null;
@@ -463,17 +543,25 @@ try {
                 ? 'LET OP: het configuratiebestand staat in de map www en is mogelijk via internet te openen. Zet het een map hoger.'
                 : 'Configuratiebestand staat veilig buiten de map www.',
             'sportlink_wedstrijden' => count($records),
-            'herkend' => count($mapped),
-            'niet_herkend' => count($records) - count($mapped),
+            'herkend' => $recognized,
+            'niet_herkend' => count($records) + count($awayRecords) - $recognized,
+            'in_de_app' => count($mapped),
             'voorbeeld_van_sportlink' => array_slice($records, 0, 2),
-            'zo_komen_ze_in_de_app' => array_slice($mapped, 0, 10),
+            'zo_komen_ze_in_de_app' => array_map($strip, array_slice($mapped, 0, 10)),
+            'jo7_uit_sportlink' => array_map(fn($m) => [
+                'datum' => $m['date'], 'tijd' => $m['time'], 'thuis' => $m['home'], 'uit' => $m['away'],
+                'ons_team' => $m['_own'], 'plaats_en_veld' => $m['_venue'],
+                'in_app' => stripos($m['_venue'], $club) !== false ? 'thuis (samen in één JO7-kaart)' : 'uit (niet in de app)',
+            ], $jo7Raw),
+            'voorbeeld_jo7_van_sportlink' => array_slice(array_values(array_filter(array_merge($records, $awayRecords),
+                fn($r) => is_array($r) && preg_match('/\bJO\s?7\b|\bO7\b/i', ($r['thuisteam'] ?? '') . ' ' . ($r['uitteam'] ?? '')))), 0, 2),
             'scheidsrechters_uit_sportlink' => array_values(array_unique(array_map(
                 fn($m) => $m['sportlink_referee'] . '  →  ' . referee_display_name($m['sportlink_referee']),
                 array_filter($mapped, fn($m) => $m['sportlink_referee'] !== '')))),
         ]);
     }
 
-    $result = sync($config, $mapped);
+    $result = sync($config, array_map($strip, $mapped));
     log_run($config, true, $result, null);
     respond(['ok' => true, 'door' => $who] + $result);
 } catch (HttpError $e) {
