@@ -106,7 +106,9 @@ function http_json(string $method, string $url, array $headers = [], $body = nul
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $err = curl_error($ch);
     curl_close($ch);
-    if ($raw === false) throw new HttpError("Verbinding mislukt met $url: $err", 502);
+    // Alleen host en pad in de melding: de querystring bevat de geheime Sportlink-clientcode.
+    $where = (parse_url($url, PHP_URL_HOST) ?: '') . (parse_url($url, PHP_URL_PATH) ?: '');
+    if ($raw === false) throw new HttpError("Verbinding mislukt met $where: $err", 502);
     $data = $raw === '' ? null : json_decode($raw, true);
     return [$status, $data, $raw];
 }
@@ -159,7 +161,14 @@ function fetch_sportlink(array $c, bool $away = false): array
         'aantalregels' => 500,
         'sorteervolgorde' => 'datum',
     ]);
-    [$status, $data, $raw] = http_json('GET', rtrim($c['sportlink_url'], '/') . '/programma?' . $query);
+    // Sportlink is soms traag: wacht 45 seconden en probeer het daarna nog één keer.
+    $url = rtrim($c['sportlink_url'], '/') . '/programma?' . $query;
+    try {
+        [$status, $data, $raw] = http_json('GET', $url, [], null, 45);
+    } catch (HttpError $e) {
+        sleep(2);
+        [$status, $data, $raw] = http_json('GET', $url, [], null, 45);
+    }
     if ($status !== 200) {
         throw new HttpError("Sportlink gaf foutcode $status. Klopt de clientcode? Antwoord: " . substr((string) $raw, 0, 300), 502);
     }
