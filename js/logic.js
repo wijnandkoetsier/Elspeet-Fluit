@@ -28,7 +28,7 @@ export function seasonCounts(matches, date) {
   const { start, end } = seasonOf(date);
   const counts = {};
   for (const m of matches) {
-    if (m.referee_id && m.date >= start && m.date <= end) counts[m.referee_id] = (counts[m.referee_id] || 0) + 1;
+    if (m.referee_id && !m.cancelled && m.date >= start && m.date <= end) counts[m.referee_id] = (counts[m.referee_id] || 0) + 1;
   }
   return counts;
 }
@@ -47,7 +47,7 @@ export function candidates(match, { referees, availability, matches, offers = []
     .map((r) => {
       const av = availability.find((a) => a.referee_id === r.id && a.date === match.date);
       const offered = offers.some((o) => o.match_id === match.id && o.referee_id === r.id);
-      const sameDay = matches.filter((m) => m.id !== match.id && m.referee_id === r.id && m.date === match.date);
+      const sameDay = matches.filter((m) => m.id !== match.id && m.referee_id === r.id && m.date === match.date && !m.cancelled);
       const conflict = sameDay.find((m) => overlaps(m, match));
       const reasons = [];
       let status = 'ok';
@@ -86,8 +86,8 @@ export function candidates(match, { referees, availability, matches, offers = []
 // mornings at another club and turns a home morning into one match with m.parts (one referee for all).
 // isAwayJo7 only catches older loose JO7 rows from before that: no parts and no "Elspeet" in the field.
 export const isAwayJo7 = (m) => m.category === 'O7' && !m.parts?.length && !!m.sportlink_code && !/elspeet/i.test(m.field || '');
-// Does the club have to provide a referee? Not when the KNVB appoints one.
-export const needsReferee = (m) => !m.external_ref;
+// Does the club have to provide a referee? Not when the KNVB appoints one, nor when it is called off.
+export const needsReferee = (m) => !m.external_ref && !m.cancelled;
 
 // Greedy proposal for all unassigned matches on a day. Returns [{matchId, refereeId}].
 export function proposeDay(date, data) {
@@ -254,6 +254,11 @@ export function matchChangeNotifications(old, neu) {
     if (old.published && old.referee_id) note(old.referee_id, 'cancelled', 'Wedstrijd vervallen', matchLabel(old), old);
     return out;
   }
+  // Afgelast of toch weer door (zelfde regel als notify_match_change() in schema.sql).
+  if (old.published && neu.published && neu.referee_id && neu.referee_id === old.referee_id && !!neu.cancelled !== !!old.cancelled) {
+    note(neu.referee_id, neu.cancelled ? 'cancelled' : 'changed', neu.cancelled ? 'Wedstrijd afgelast' : 'Wedstrijd gaat toch door', matchLabel(neu), neu);
+    return out;
+  }
   if (old.published && old.referee_id && (neu.referee_id !== old.referee_id || !neu.published)) {
     note(old.referee_id, 'withdrawn', 'Aanstelling ingetrokken', matchLabel(old), old);
   } else if (old.published && neu.published && neu.referee_id === old.referee_id
@@ -269,7 +274,7 @@ export function matchChangeNotifications(old, neu) {
 // A referee marks a day unavailable while already assigned that day → note for planners.
 export function unavailableNotification(prev, row, matches, refereeName) {
   if (row.available || (prev && !prev.available)) return null;
-  const n = matches.filter((m) => m.referee_id === row.referee_id && m.date === row.date).length;
+  const n = matches.filter((m) => m.referee_id === row.referee_id && m.date === row.date && !m.cancelled).length;
   if (!n) return null;
   const [, mo, d] = row.date.split('-');
   return {
