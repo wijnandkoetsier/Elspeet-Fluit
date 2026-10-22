@@ -14,7 +14,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - **Meldingen** bij een aanstelling, wijziging, intrekking of vervallen wedstrijd, ook als pushmelding op de telefoon
 
 **Planner**
-- Thuiswedstrijden **automatisch uit Sportlink** (Club.Dataservice), elk uur bijgewerkt; of handmatig/CSV
+- Thuiswedstrijden **automatisch uit Sportlink** (Club.Dataservice), elk uur bijgewerkt, t/m 31 december (in blokken van 6 weken); of handmatig/CSV
 - Speelduur per categorie automatisch ingevuld (bijv. O9 45 min, O13 65 min, senioren 105 min)
 - Scheidsrechters die in Sportlink al zijn aangesteld worden overgenomen
 - Wedstrijden markeren waarvoor de KNVB zelf aanstelt
