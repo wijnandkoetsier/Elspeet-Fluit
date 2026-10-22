@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v10';
+const KEY = 'scheidsapp-demo-v11';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -38,6 +38,8 @@ function seed() {
     { time: '09:20', home: 'Elspeet O7-2', away: 'Hulshorst O7-2', field: 'Veld 1 A1b' },
     { time: '09:40', home: 'Elspeet O7-1', away: 'Hulshorst O7-2', field: 'Veld 1 A1a' },
     { time: '09:40', home: 'Elspeet O7-2', away: 'Nunspeet O7-3', field: 'Veld 1 A1b' }] });
+  // Afgelaste wedstrijd (zoals Sportlink die doorgeeft): blijft zichtbaar, geen scheidsrechter nodig.
+  matches.push({ ...mk(d2, '10:30', 'Elspeet O9-1', 'SVO O9-1', 'Veld 2', 'O9'), duration: 45, cancelled: true });
   matches[6].duration = 105;
   matches[6].external_ref = true; // KNVB stelt aan
   const availability = [

@@ -237,7 +237,8 @@ function clean_field(string $field): string
 function map_match(array $r, string $club = ''): ?array
 {
     $status = (string) (pick($r, ['status', 'wedstrijdstatus']) ?? '');
-    if (preg_match('/afgelast|vervallen|geannuleerd|afgekeurd/i', $status)) return null;
+    // Afgelast, afgekeurd enz.: blijft in de app staan met de status Afgelast (geen scheidsrechter nodig).
+    $cancelled = (bool) preg_match('/afgelast|vervallen|geannuleerd|afgekeurd/i', $status);
 
     $code = pick($r, ['wedstrijdcode', 'wedstrijdnummer', 'code']);
     $when = pick($r, ['wedstrijddatum', 'datum', 'kaledatum', 'datumvolledig']);
@@ -287,6 +288,7 @@ function map_match(array $r, string $club = ''): ?array
         'duration' => default_duration($category),
         'match_type' => $type,
         'sportlink_referee' => $ref ?: '',
+        'cancelled' => $cancelled,
         'parts' => null, // alleen bij een JO7-ochtend (zie combine_jo7); alle rijen moeten dezelfde velden hebben
         '_own' => $own,
         '_venue' => $venue,
@@ -325,6 +327,7 @@ function combine_jo7(array $mapped, string $club): array
             'away' => $m['away'],
             'field' => $m['field'],
             'code' => $m['sportlink_code'],
+            'cancelled' => $m['cancelled'],
         ], $list);
         $refs = array_values(array_filter(array_unique(array_map(fn($m) => $m['sportlink_referee'], $list))));
         $out[] = [
@@ -338,6 +341,8 @@ function combine_jo7(array $mapped, string $club): array
             'duration' => max(30, $endMin - ($fh * 60 + $fm)),
             'match_type' => $first['match_type'],
             'sportlink_referee' => $refs[0] ?? '',
+            // Afgelast als alle wedstrijdjes van die ochtend zijn afgelast.
+            'cancelled' => !array_filter($list, fn($m) => !$m['cancelled']),
             'parts' => $parts,
             '_own' => $title,
             '_venue' => $first['_venue'],
@@ -427,7 +432,7 @@ function sync(array $c, array $feed): array
     $until = date('Y-m-d', strtotime('+' . min(42, (int) $c['days_ahead']) . ' days'));
     $knvbTeams = array_map('mb_strtolower', $c['knvb_teams'] ?? []);
 
-    $existing = supabase($c, 'GET', 'matches?select=id,sportlink_code,date,time,duration,home,away,field,category,match_type,sportlink_referee,parts,referee_id,published,referee_from_sportlink,external_ref&sportlink_code=not.is.null&date=gte.' . $today);
+    $existing = supabase($c, 'GET', 'matches?select=id,sportlink_code,date,time,duration,home,away,field,category,match_type,sportlink_referee,parts,cancelled,referee_id,published,referee_from_sportlink,external_ref&sportlink_code=not.is.null&date=gte.' . $today);
     $manual = supabase($c, 'GET', 'matches?select=id,date,time,home,referee_id&sportlink_code=is.null&date=gte.' . $today);
     $refs = supabase($c, 'GET', 'referees?select=id,name,sportlink_name');
     $byCode = [];
@@ -460,6 +465,7 @@ function sync(array $c, array $feed): array
             foreach (['date', 'time', 'home', 'away', 'field', 'match_type', 'sportlink_referee'] as $k) {
                 if ((string) ($old[$k] ?? '') !== (string) $f[$k]) $patch[$k] = $f[$k];
             }
+            if ((bool) ($old['cancelled'] ?? false) !== (bool) $f['cancelled']) $patch['cancelled'] = $f['cancelled'];
             // JO7-ochtend: de losse wedstrijden en de totale duur volgen Sportlink.
             if (isset($f['parts'])) {
                 if (json_encode($old['parts'] ?? null) !== json_encode($f['parts'])) $patch['parts'] = $f['parts'];

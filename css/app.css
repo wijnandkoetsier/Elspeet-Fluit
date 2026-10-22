@@ -649,3 +649,9 @@ details.parts li span small { display: block; color: var(--muted); font-size: .7
 .install-banner .btn.small { min-height: 38px; }
 .mrow:has(details.parts[open]) { align-items: start; }
 .mrow > details.parts { grid-column: 2 / -1; margin-top: 0; }
+
+/* Afgelaste wedstrijd: blijft staan, doorgestreept, met rood label */
+.label.cancelled { color: var(--red); background: var(--red-soft); box-shadow: none; }
+.mrow.cancelled .teams { text-decoration: line-through; text-decoration-color: var(--muted); color: var(--muted); }
+.mrow.cancelled .t { color: var(--muted); text-decoration: line-through; }
+details.parts li.cancelled span { color: var(--muted); } details.parts li.cancelled b { color: var(--muted); text-decoration: line-through; }

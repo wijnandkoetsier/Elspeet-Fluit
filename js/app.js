@@ -298,7 +298,7 @@ function partsList(m) {
   return `
     <details class="parts" data-parts="${m.id}" ${open ? 'open' : ''}>
       <summary>${plural(m.parts.length, 'wedstrijd', 'wedstrijden')}<span class="chev" aria-hidden="true">›</span></summary>
-      <ol>${m.parts.map((p) => `<li><b>${esc(p.time)}</b><span>${p.home
+      <ol>${m.parts.map((p) => `<li class="${p.cancelled ? 'cancelled' : ''}"><b>${esc(p.time)}</b><span>${p.cancelled ? '<em class="label cancelled">Afgelast</em> ' : ''}${p.home
         ? `${team(p.home)} – ${team(p.away || '–')}` : `tegen ${team(p.opponent || '–')}`}${p.field && p.field !== m.field ? `<small>${esc(p.field)}</small>` : ''}</span></li>`).join('')}</ol>
     </details>`;
 }
@@ -317,9 +317,10 @@ function matchRow(m, { sub = '', action = '', attrs = '', time = m.time } = {}) 
     m.category && `<span class="label">${esc(m.category)}</span>`,
     m.match_type && `<span class="label type">${esc(m.match_type)}</span>`,
     m.external_ref && '<span class="label knvb">KNVB</span>',
+    m.cancelled && '<span class="label cancelled">Afgelast</span>',
   ].filter(Boolean).join('');
   return `
-    <div class="mrow ${needsReferee(m) ? '' : 'dim'}" ${attrs}>
+    <div class="mrow ${m.cancelled ? 'cancelled' : needsReferee(m) ? '' : 'dim'}" ${attrs}>
       <div class="t">${esc(time)}</div>
       <div class="info">
         <div class="teams"><span class="home">${team(m.home)}</span>${m.parts?.length ? '<span class="away">Wedstrijden</span>' : m.away ? `<span class="away">${team(m.away)}</span>` : ''}</div>
@@ -419,7 +420,10 @@ function planning(view) {
   const cell = (m) => {
     const parts = m.field ? [esc(m.field)] : [];
     let action = '';
-    if (m.external_ref) {
+    if (m.cancelled) {
+      // Afgelast: geen scheidsrechter nodig. Wie was aangesteld, staat er nog bij (en kreeg een melding).
+      parts.push(m.referee_id ? `Afgelast, was ${esc(refName(m.referee_id))}` : 'Afgelast, geen scheids nodig');
+    } else if (m.external_ref) {
       parts.push(m.sportlink_referee ? `KNVB: ${esc(m.sportlink_referee)}` : 'KNVB stelt aan');
     } else if (m.referee_id) {
       const issue = assignmentIssue(m, state.data);
@@ -741,13 +745,14 @@ function matchForm(m) {
         <label>Duur (min)<input type="number" name="duration" min="20" max="180" value="${esc(m.duration || 90)}"></label></div>
       <label>Categorie<select name="category"><option value=""></option>${CATEGORIES.map((c) => `<option ${c === m.category ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       <label class="check"><input type="checkbox" name="external_ref" ${m.external_ref ? 'checked' : ''}> KNVB stelt scheidsrechter aan</label>
+      <label class="check"><input type="checkbox" name="cancelled" ${m.cancelled ? 'checked' : ''}> Afgelast <small class="muted">${m.sportlink_code ? 'volgt Sportlink' : 'blijft zichtbaar, geen scheids nodig'}</small></label>
       <button class="btn primary block">Opslaan</button>
       ${m.id ? '<button type="button" class="btn danger block" id="del">Verwijderen</button>' : ''}
     </form>`, (el, close) => {
     $('#mf', el).onsubmit = (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
-      const row = { ...f, duration: Number(f.duration) || 90, external_ref: !!f.external_ref };
+      const row = { ...f, duration: Number(f.duration) || 90, external_ref: !!f.external_ref, cancelled: !!f.cancelled };
       if (row.external_ref) { row.referee_id = null; row.published = false; }
       if (m.id) row.id = m.id;
       close();
@@ -947,7 +952,7 @@ function overzicht(view) {
   const horizon = new Date(today + 'T12:00:00'); horizon.setDate(horizon.getDate() + OPEN_DAYS_AHEAD);
   const until = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`;
   const mine = matches.filter((m) => m.referee_id === me && m.published && m.date >= today).sort(byTime);
-  const myDay = matches.filter((m) => m.referee_id === me && m.date >= today);
+  const myDay = matches.filter((m) => m.referee_id === me && m.date >= today && !m.cancelled);
   // Open = no published referee yet, and kick-off still to come.
   const now = nowHM();
   const allOpen = matches.filter((m) => !m.referee_id && needsReferee(m) && m.date <= until
@@ -984,10 +989,10 @@ function overzicht(view) {
     ${installBanner()}
     ${!me ? '<section class="card warn">Je account is nog niet gekoppeld aan een scheidsrechter. Vraag de planner om je e-mailadres toe te voegen.</section>' : ''}
     ${todo.length ? `<a class="card warn tap block icon-label" href="#beschikbaarheid">${ICONS.calendar}<span>Vul je beschikbaarheid in voor ${todo.length === 1 ? fmtDate(todo[0], { weekday: 'long', day: 'numeric', month: 'long' }) : plural(todo.length, 'dag', 'dagen')}</span>${ICONS.arrow}</a>` : ''}
-    ${dayList('Ik fluit', `<span class="pill ${mine.length ? 'done' : ''}">${mine.length} komend</span>`,
+    ${dayList('Ik fluit', `<span class="pill ${mine.length ? 'done' : ''}">${mine.filter((m) => !m.cancelled).length} komend</span>`,
       (mine.slice(0, 3).map((m) => matchRow(m, {
         sub: [fmtDate(m.date), m.field].filter(Boolean).map(esc).join(SEP),
-        action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
+        action: m.cancelled ? '' : `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
       })).join('') || '<p class="muted list-empty">Je hebt nog geen aanstellingen.</p>')
       + (mine.length > 3 ? `<a class="link-row pad-row" href="#mijn"><span>Alle ${mine.length} wedstrijden</span>${ICONS.arrow}</a>` : ''))}
     ${dayList('Laatste meldingen', unread ? `<span class="pill open">${unread} nieuw</span>` : '',
@@ -1031,7 +1036,7 @@ function mijn(view) {
     ${upcoming.length ? dayList('Komende wedstrijden', `<span class="pill done">${upcoming.length}</span>`,
       upcoming.map((m) => matchRow(m, {
         sub: sub(m),
-        action: `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
+        action: m.cancelled ? '' : `<button class="btn pill-btn" data-ics="${m.id}">Agenda</button>`,
       })).join(''))
       : `<section class="card empty"><p>Je hebt nog geen wedstrijden om te fluiten.</p>
           ${viewRole() === 'planner' ? '' : '<button class="btn primary" id="see-open">Bekijk open wedstrijden</button>'}</section>`}

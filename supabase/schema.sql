@@ -50,6 +50,8 @@ alter table public.matches add column if not exists referee_from_sportlink boole
 -- JO7-ochtend: één wedstrijd in de app (één scheidsrechter), de losse wedstrijden staan hierin:
 -- [{"time": "09:00", "opponent": "SVO JO7-1", "field": "Veld 3", "code": "..."}, ...]
 alter table public.matches add column if not exists parts jsonb;
+-- Afgelast (volgt Sportlink, of door de planner aangevinkt): blijft zichtbaar, maar heeft geen scheidsrechter nodig.
+alter table public.matches add column if not exists cancelled boolean not null default false;
 -- Scheidsrechters die uit Sportlink zijn overgenomen worden herkend aan hun naam in Sportlink.
 alter table public.referees add column if not exists sportlink_name text;
 -- Rol: is_referee = kan worden ingepland (uit = alleen planner). invite_planner = wordt planner bij
@@ -221,6 +223,16 @@ begin
     return old;
   end if;
 
+  -- Afgelast of toch weer door: melding voor de aangestelde scheidsrechter.
+  if old.published and new.published and new.referee_id is not null and new.referee_id = old.referee_id
+     and new.cancelled is distinct from old.cancelled then
+    insert into notifications (referee_id, kind, title, body, match_id, date)
+    values (new.referee_id, case when new.cancelled then 'cancelled' else 'changed' end,
+            case when new.cancelled then 'Wedstrijd afgelast' else 'Wedstrijd gaat toch door' end,
+            match_label(new), new.id, new.date);
+    return new;
+  end if;
+
   -- Geen melding als de scheidsrechter zelf net is verwijderd (dan wordt de wedstrijd vrijgemaakt).
   if old.published and old.referee_id is not null
      and (new.referee_id is distinct from old.referee_id or not new.published)
@@ -252,7 +264,7 @@ begin
   -- Geen melding als het al 'niet beschikbaar' was, of als een planner het voor iemand anders invult.
   if new.available or (tg_op = 'UPDATE' and not old.available)
      or (is_planner() and new.referee_id is distinct from my_referee_id()) then return new; end if;
-  select count(*) into n from matches where referee_id = new.referee_id and date = new.date;
+  select count(*) into n from matches where referee_id = new.referee_id and date = new.date and not cancelled;
   if n = 0 then return new; end if;
   select name into who from referees where id = new.referee_id;
   insert into notifications (to_planners, kind, title, body, date)
@@ -370,7 +382,7 @@ begin
   for rec in
     select distinct on (r.id) r.id as referee_id, m.date
     from referees r
-    join matches m on m.date between current_date + 1 and current_date + 7 and not m.external_ref
+    join matches m on m.date between current_date + 1 and current_date + 7 and not m.external_ref and not m.cancelled
     where r.active and r.is_referee and r.user_id is not null
       and not exists (select 1 from availability a where a.referee_id = r.id and a.date = m.date)
       and not exists (select 1 from notifications n where n.referee_id = r.id and n.kind = 'reminder' and n.date = m.date)
