@@ -37,6 +37,7 @@ return [
     // uit Sportlink alleen getoond, niet als clubscheidsrechter ingepland.
     'knvb_teams' => ['Elspeet 1'],
 
-    // Hoeveel dagen vooruit ophalen (Sportlink staat maximaal 42 toe).
+    // Minimaal zoveel dagen vooruit ophalen. Er wordt altijd t/m 31 december van dit jaar opgehaald,
+    // in blokken van 6 weken (Sportlink geeft per keer maximaal 42 dagen).
     'days_ahead' => 42,
 ];

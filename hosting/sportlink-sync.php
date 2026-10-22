@@ -148,8 +148,46 @@ function authorize(array $c): string
 
 // ---------- Sportlink ----------
 
+/**
+ * Tot welke datum we ophalen: minstens days_ahead dagen vooruit, en altijd t/m 31 december van dit jaar.
+ * Wordt ook gebruikt om te bepalen welke wedstrijden uit het programma zijn verdwenen.
+ */
+function sync_until(array $c): string
+{
+    $ahead = strtotime('+' . max(1, (int) $c['days_ahead']) . ' days');
+    return date('Y-m-d', max($ahead, strtotime(date('Y') . '-12-31')));
+}
+
+/**
+ * Het hele programma t/m sync_until(), in blokken van 6 weken (Sportlink geeft per keer maximaal
+ * 42 dagen). Elke wedstrijd één keer. $blocks krijgt per blok het aantal wedstrijden (voor de test).
+ */
+function fetch_period(array $c, bool $away = false, ?array &$blocks = null): array
+{
+    $until = sync_until($c);
+    $out = [];
+    $seen = [];
+    $blocks = [];
+    for ($week = 0; $week <= 52; $week += 6) {
+        $from = date('Y-m-d', strtotime("+$week weeks"));
+        if ($from > $until) break;
+        $rows = fetch_sportlink($c, $away, $week);
+        $new = 0;
+        foreach ($rows as $r) {
+            if (!is_array($r)) continue;
+            $code = pick($r, ['wedstrijdcode', 'wedstrijdnummer', 'code']) ?? md5(json_encode($r));
+            if (isset($seen[$code])) continue;
+            $seen[$code] = true;
+            $out[] = $r;
+            $new++;
+        }
+        $blocks[] = ['vanaf' => $from, 'wedstrijden' => count($rows), 'nieuw' => $new];
+    }
+    return $out;
+}
+
 /** Programma uit Sportlink. Standaard de thuiswedstrijden; met $away = true de uitwedstrijden. */
-function fetch_sportlink(array $c, bool $away = false): array
+function fetch_sportlink(array $c, bool $away = false, int $weekOffset = 0): array
 {
     $query = http_build_query([
         'client_id' => $c['sportlink_client_id'],
@@ -157,10 +195,10 @@ function fetch_sportlink(array $c, bool $away = false): array
         'uit' => $away ? 'JA' : 'NEE',
         'eigenwedstrijden' => 'JA',
         'gebruiklokaleteamgegevens' => 'NEE',
-        'aantaldagen' => min(42, max(1, (int) $c['days_ahead'])),
+        'aantaldagen' => 42,
         'aantalregels' => 500,
         'sorteervolgorde' => 'datum',
-    ]);
+    ] + ($weekOffset ? ['weekoffset' => $weekOffset] : []));
     // Sportlink is soms traag: wacht 45 seconden en probeer het daarna nog één keer.
     $url = rtrim($c['sportlink_url'], '/') . '/programma?' . $query;
     try {
@@ -429,7 +467,7 @@ function resolve_referee(array $c, array &$refs, string $raw, int &$created): ?s
 function sync(array $c, array $feed): array
 {
     $today = date('Y-m-d');
-    $until = date('Y-m-d', strtotime('+' . min(42, (int) $c['days_ahead']) . ' days'));
+    $until = sync_until($c);
     $knvbTeams = array_map('mb_strtolower', $c['knvb_teams'] ?? []);
 
     $existing = supabase($c, 'GET', 'matches?select=id,sportlink_code,date,time,duration,home,away,field,category,match_type,sportlink_referee,parts,cancelled,referee_id,published,referee_from_sportlink,external_ref&sportlink_code=not.is.null&date=gte.' . $today);
@@ -534,14 +572,14 @@ try {
 
     $who = authorize($config);
     $club = (string) $config['club_name'];
-    $records = fetch_sportlink($config);
+    $records = fetch_period($config, false, $blocks);
     $mapped = [];
     foreach ($records as $r) {
         if (is_array($r) && ($m = map_match($r, $club))) $mapped[] = $m;
     }
     // JO7: ook de "uit"-wedstrijden ophalen, want bij een JO7-ochtend thuis staat Elspeet soms als tweede.
     $awayRecords = [];
-    try { $awayRecords = fetch_sportlink($config, true); } catch (Throwable $e) { /* thuisprogramma gaat voor */ }
+    try { $awayRecords = fetch_period($config, true); } catch (Throwable $e) { /* thuisprogramma gaat voor */ }
     $codes = array_flip(array_map(fn($m) => $m['sportlink_code'], $mapped));
     foreach ($awayRecords as $r) {
         if (is_array($r) && ($m = map_match($r, $club)) && $m['category'] === 'O7' && !isset($codes[$m['sportlink_code']])) $mapped[] = $m;
@@ -559,6 +597,9 @@ try {
             'configuratie' => $docroot && str_starts_with(realpath($config['_path']), $docroot)
                 ? 'LET OP: het configuratiebestand staat in de map www en is mogelijk via internet te openen. Zet het een map hoger.'
                 : 'Configuratiebestand staat veilig buiten de map www.',
+            'periode' => date('Y-m-d') . ' t/m ' . sync_until($config),
+            'blokken_van_6_weken' => $blocks,
+            'laatste_datum_van_sportlink' => max(array_map(fn($m) => $m['date'], $mapped) ?: ['geen']),
             'sportlink_wedstrijden' => count($records),
             'herkend' => $recognized,
             'niet_herkend' => count($records) + count($awayRecords) - $recognized,
