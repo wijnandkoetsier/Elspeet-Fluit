@@ -1,6 +1,12 @@
 # Instellingen voor scheids.vv-elspeet.nl (Apache bij Vimexx). Wordt mee geüpload door .github/workflows/vimexx.yml.
 
-# Eigen 404-pagina in plaats van die van de hoofdsite (die hier niet bestaat en een 500 gaf).
+# De doorstuurregels van de clubsite (public_html) gelden hier niet: die stuurden een ontbrekend
+# bestand naar een index.php die hier niet bestaat, met een 500 als gevolg.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+</IfModule>
+
+# Eigen 404-pagina.
 ErrorDocument 404 /404.html
 
 # Het bestand waarmee de upload bijhoudt wat er al staat, hoeft niemand te zien.
