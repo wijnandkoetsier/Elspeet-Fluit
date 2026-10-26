@@ -1,5 +1,5 @@
 // Service worker: app shell offline beschikbaar. Data komt altijd vers van het netwerk.
-const CACHE = 'scheidsapp-v31';
+const CACHE = 'scheidsapp-v32';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/logic.js', 'js/config.js', 'js/store-local.js', 'js/store-supabase.js',
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'Elspeet Fluit', {
+  e.waitUntil(self.registration.showNotification(d.title || 'Scheids VV Elspeet', {
     body: d.body || '',
     icon: 'icons/icon-192.png',
     badge: 'icons/icon-192.png',

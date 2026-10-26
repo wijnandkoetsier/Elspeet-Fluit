@@ -1,0 +1,43 @@
+name: Publiceer op Vimexx (scheids.vv-elspeet.nl)
+
+# Zet de app via FTP op de hosting van VV Elspeet bij Vimexx, na elke wijziging in main.
+# Instellen in GitHub → Settings → Secrets and variables → Actions:
+#   Variables: FTP_SERVER   (bijv. ftp.vv-elspeet.nl)
+#              FTP_DIR      (optioneel, standaard ./ = de map van het FTP-account)
+#   Secrets:   FTP_USERNAME en FTP_PASSWORD (van het FTP-account voor de map van scheids.vv-elspeet.nl)
+# Zolang FTP_SERVER leeg is, wordt deze stap overgeslagen.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vimexx
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ vars.FTP_SERVER != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload naar Vimexx
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ vars.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          server-dir: ${{ vars.FTP_DIR || './' }}
+          # Alleen de app zelf; de Sportlink-koppeling, database en uitleg horen niet op de website.
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            hosting/**
+            supabase/**
+            README.md

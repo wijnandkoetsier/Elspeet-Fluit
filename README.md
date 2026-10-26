@@ -1,4 +1,4 @@
-# Elspeet Fluit
+# Scheids VV Elspeet
 
 De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen vanaf je telefoon. Werkt in de browser en is te installeren op de telefoon (PWA), zonder App Store.
 
@@ -51,7 +51,7 @@ npx http-server -c-1 .
 3. Ga naar **Authentication → URL Configuration** en zet de **Site URL** op het adres waar de app komt te staan (zie stap 2), bijvoorbeeld `https://<gebruiker>.github.io/Elspeet-Fluit/`.
 4. Ga naar **Authentication → Email Templates** en zet de code in de e-mail, zodat inloggen ook werkt vanuit de app op het beginscherm. Doe dit bij **Confirm signup** (de mail bij de allereerste keer inloggen) én bij **Magic Link** (alle keren daarna). Bijvoorbeeld:
    ```html
-   <h2>Inloggen bij Elspeet Fluit</h2>
+   <h2>Inloggen bij Scheids VV Elspeet</h2>
    <p>Je code is: <strong style="font-size:24px">{{ .Token }}</strong></p>
    <p>Of tik op deze link: <a href="{{ .ConfirmationURL }}">inloggen</a></p>
    ```
@@ -59,9 +59,18 @@ npx http-server -c-1 .
 
 > De anon key mag openbaar in de code staan; de beveiliging zit in de Row Level Security-regels van het schema.
 
-### 2. Online zetten (GitHub Pages)
-1. In GitHub: **Settings → Pages → Source: GitHub Actions**.
-2. Merge naar `main`. De workflow `.github/workflows/pages.yml` publiceert de app automatisch.
+### 2. Online zetten (scheids.vv-elspeet.nl bij Vimexx)
+De app staat op **https://scheids.vv-elspeet.nl** (hosting van VV Elspeet bij Vimexx, DirectAdmin).
+1. DirectAdmin: subdomein `scheids` aanmaken en bij **SSL Certificates** een gratis Let's Encrypt-certificaat voor `scheids.vv-elspeet.nl` aanvragen.
+2. DirectAdmin → **FTP Management**: een FTP-account dat alleen bij de map van het subdomein kan.
+3. GitHub → **Settings → Secrets and variables → Actions**:
+   - tab **Variables**: `FTP_SERVER` (bijv. `ftp.vv-elspeet.nl`)
+   - tab **Secrets**: `FTP_USERNAME` en `FTP_PASSWORD`
+4. Merge naar `main`. De workflow `.github/workflows/vimexx.yml` zet de app via FTPS online (alleen de app, niet `hosting/`, `supabase/` of deze README).
+5. Supabase → **Authentication → URL Configuration**: Site URL en Redirect URLs op `https://scheids.vv-elspeet.nl/`.
+6. In `elspeet-fluit-config.php` van de Sportlink-koppeling `https://scheids.vv-elspeet.nl` toevoegen aan `allowed_origins`.
+
+Daarnaast publiceert `.github/workflows/pages.yml` de app ook nog op GitHub Pages.
 
 ### 3. Eerste planner aanwijzen
 Alleen wie als scheidsrechter in de lijst staat, kan inloggen. Zet jezelf er dus eerst in via de SQL Editor (`active` op `false` als je zelf niet fluit):
