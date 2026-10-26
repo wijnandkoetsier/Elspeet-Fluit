@@ -79,7 +79,7 @@ De app staat op **https://scheids.vv-elspeet.nl** (hosting van VV Elspeet bij Vi
    (vanaf de opdrachtregel is geen token nodig).
 4. `SPORTLINK_SYNC_URL` in `js/config.js` op het nieuwe adres zetten en de cronjob bij TransIP verwijderen.
 
-Daarnaast publiceert `.github/workflows/pages.yml` de app ook nog op GitHub Pages.
+Het oude adres op GitHub Pages (`wijnandkoetsier.github.io/Elspeet-Fluit`) stuurt door naar scheids.vv-elspeet.nl (`.github/workflows/pages.yml` publiceert alleen `.github/pages-redirect/`).
 
 ### 3. Eerste planner aanwijzen
 Alleen wie als scheidsrechter in de lijst staat, kan inloggen. Zet jezelf er dus eerst in via de SQL Editor (`active` op `false` als je zelf niet fluit):

@@ -1,4 +1,4 @@
-name: Publiceer op GitHub Pages
+name: Doorsturen vanaf GitHub Pages
 
 on:
   push:
@@ -23,8 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # De app staat nu op https://scheids.vv-elspeet.nl (zie vimexx.yml). Op het oude adres staat
+      # alleen nog een doorstuurpagina, plus een service worker die de oude app netjes uitschakelt.
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: .github/pages-redirect
       - id: deployment
         uses: actions/deploy-pages@v4
