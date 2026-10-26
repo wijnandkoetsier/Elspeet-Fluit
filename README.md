@@ -106,11 +106,11 @@ Voeg scheidsrechters toe bij **Scheidsen** met hun e-mailadres en deel de link n
 ### 5. Pushmeldingen (optioneel)
 Meldingen staan altijd in het tabblad **Meldingen**. Voor een melding op het vergrendelscherm (alles via de Supabase-website, geen extra programma's nodig):
 
-1. **Sleutelpaar maken** (VAPID): op een computer met Node.js `npx web-push generate-vapid-keys`. Je krijgt een *Public Key* en een *Private Key*. De private key is geheim: alleen in Supabase invullen, nooit in de app of op GitHub.
+1. **Sleutelpaar maken** (VAPID): op een computer met Node.js `npx web-push generate-vapid-keys` (of in de browser met een kleine pagina die het paar lokaal maakt). Je krijgt een *Public Key* en een *Private Key*. De private key is geheim: alleen in Supabase invullen, nooit in de app of op GitHub.
 2. Zet de **Public Key** in `VAPID_PUBLIC_KEY` in [`js/config.js`](js/config.js).
 3. Supabase → **Edge Functions → Secrets**: voeg toe `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` en `VAPID_CONTACT` (je e-mailadres).
 4. Supabase → **Edge Functions → Deploy a new function → Via Editor**: naam `send-push`, plak de inhoud van [`supabase/functions/send-push/index.ts`](supabase/functions/send-push/index.ts) en klik **Deploy**.
-5. Supabase → **Database → Webhooks → Create a new hook**: naam `push`, tabel `notifications`, event **Insert**, type **Supabase Edge Functions**, functie `send-push`.
+5. Supabase → **Integrations → Database Webhooks → Create a new hook**: naam `push`, tabel `notifications`, event **Insert**, type **Supabase Edge Functions**, functie `send-push`. Gebruikt je project de nieuwe API-sleutels (`sb_publishable_…`)? Zet dan bij **HTTP Headers** een header `apikey` met je **Publishable key** (Project Settings → API Keys); de oude `Authorization: Bearer eyJ…` wordt dan geweigerd. De functie leest de melding zelf uit de database, dus de openbare sleutel geeft niemand de mogelijkheid eigen berichten te versturen.
 
 **Wekelijkse herinnering:** `schema.sql` plant met de extensie **pg_cron** elke donderdag om 17:00 UTC een herinnering in voor wie de komende week wedstrijden heeft en nog niets heeft ingevuld. Meldt de SQL Editor *"Herinnering niet ingepland"*? Zet dan **Database → Extensions → pg_cron** aan en voer `schema.sql` opnieuw uit.
 6. Iedereen kan daarna bij **Meldingen** op **Meldingen aanzetten** tikken. Op de iPhone werkt dit alleen als de app op het beginscherm staat (iOS 16.4 of nieuwer).
