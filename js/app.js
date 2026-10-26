@@ -464,9 +464,12 @@ function planning(view) {
   const unpublished = own.filter((m) => m.referee_id && !m.published);
   const refName = (id) => referees.find((r) => r.id === id)?.name || '?';
 
-  const shown = dayMatches.filter((m) => filter === 'alle'
+  const byStatus = dayMatches.filter((m) => filter === 'alle'
     || (filter === 'open' && needsReferee(m) && !m.referee_id)
     || (filter === 'concept' && m.referee_id && !m.published));
+  // Filter op team; vervalt als dat team op deze dag niet speelt.
+  if (state.teamFilter && !byStatus.some((m) => m.category === state.teamFilter)) state.teamFilter = null;
+  const shown = state.teamFilter ? byStatus.filter((m) => m.category === state.teamFilter) : byStatus;
 
   // Status and button for one match (also used for the matches inside a JO7 card).
   const cell = (m) => {
@@ -500,6 +503,7 @@ function planning(view) {
 
   view.innerHTML = `
     ${dateNav(days, day, { filter })}
+    ${teamChips(byStatus, state.teamFilter, 'data-team')}
     ${open.length ? `<div class="actions top"><button class="btn small icon-label" id="propose">${ICONS.magic}Voorstel maken</button></div>` : ''}
     ${dayList(fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' }), pill, rows)}
     ${whoCanReferee(day)}
@@ -507,6 +511,7 @@ function planning(view) {
       <div class="publish-bar"><button class="btn primary" id="publish">Publiceren (${unpublished.length})</button></div>` : ''}`;
 
   bindDateNav(view, days, day);
+  view.querySelectorAll('[data-team]').forEach((b) => b.onclick = () => { state.teamFilter = b.dataset.team || null; render(); });
   view.querySelectorAll('[data-assign]').forEach((b) => b.onclick = () => assignSheet(b.dataset.assign));
   $('#all-avail').onclick = () => availabilitySheet(day);
   const prop = $('#propose');
@@ -592,7 +597,7 @@ function dayAvailability(day) {
   return groups;
 }
 
-function availRow({ r, a, assigned }, editable = false) {
+function availRow({ r, a, assigned }, editable = false, remindDay = null) {
   const hours = a?.available
     ? availHours(a)
     : a ? 'Niet beschikbaar' : 'Nog niets ingevuld';
@@ -603,6 +608,7 @@ function availRow({ r, a, assigned }, editable = false) {
     <div class="arow ${editable ? 'tap' : ''}" ${editable ? `data-edit-av="${r.id}" role="button" tabindex="0"` : ''}>
       <div class="avatar">${esc(initials(r.name))}</div>
       <div class="info"><b>${esc(r.name)}</b><small>${esc(hours)}${extra ? ` · ${esc(extra)}` : ''}</small></div>
+      ${remindDay ? waMini(r.phone, waRemind(r, remindDay), `Herinner ${firstName(r.name)} via WhatsApp`) : ''}
       <i class="adot ${st}" title="${{ free: 'Vrij', busy: 'Al aangesteld, nog ruimte', full: 'Maximum bereikt', no: 'Niet beschikbaar', none: 'Onbekend' }[st]}"></i>
     </div>`;
 }
@@ -624,7 +630,7 @@ function whoCanReferee(day) {
 
 function availabilitySheet(day) {
   const g = dayAvailability(day);
-  const block = (title, list) => list.length ? `<h4 class="sheet-sub">${title} (${list.length})</h4>${list.map((x) => availRow(x, true)).join('')}` : '';
+  const block = (title, list, remind = false) => list.length ? `<h4 class="sheet-sub">${title} (${list.length})</h4>${list.map((x) => availRow(x, true, remind ? day : null)).join('')}` : '';
   const withMail = g.none.filter((x) => x.r.email).map((x) => x.r);
   sheet(`
     <h3>Beschikbaarheid ${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
@@ -632,7 +638,7 @@ function availabilitySheet(day) {
     <div class="who">
       ${block('Beschikbaar', g.yes)}
       ${block('Niet beschikbaar', g.no)}
-      ${block('Nog niets ingevuld', g.none)}
+      ${block('Nog niets ingevuld', g.none, true)}
     </div>
     ${withMail.length ? `<a class="btn block icon-label" href="${remindLink(withMail, day)}">${ICONS.mail}Herinnering mailen (${withMail.length})</a>
       <p class="muted">Werkt dit niet? Mail dan zelf naar: <span class="select">${withMail.map((r) => esc(r.email)).join(', ')}</span></p>` : ''}
@@ -704,12 +710,14 @@ function assignSheet(matchId) {
       ${list.map((c) => {
         const reasons = c.reasons.filter((x) => x !== 'Biedt zich aan');
         return `
+        <div class="cand-row">
         <button class="cand ${c.status} ${c.offered ? 'offered' : ''} ${c.referee.id === m.referee_id ? 'current' : ''}" data-ref="${c.referee.id}">
           <span class="dot"></span>
           <span class="who"><b>${esc(c.referee.name)}</b>${c.offered ? `<span class="offer-tag">${ICONS.hand}Biedt zich aan</span>` : ''}
             <small>${esc(reasons.join(' · ') || (c.offered ? '' : label[c.status]))}</small></span>
           <span class="count" title="Aanstellingen dit seizoen">${c.season}<small>dit seizoen</small></span>
-        </button>`;
+        </button>${waMini(c.referee.phone, waAsk(c.referee, m), `Vraag ${firstName(c.referee.name)} via WhatsApp`)}
+        </div>`;
       }).join('') || '<p>Nog geen scheidsrechters.</p>'}
     </div>
     ${m.referee_id ? '<button class="btn danger block" id="unassign">Toewijzing verwijderen</button>' : ''}
@@ -872,6 +880,7 @@ function scheidsrechters(view) {
           <div class="avatar">${esc(initials(r.name))}</div>
           <div class="body"><b>${esc(r.name)}</b>
             ${meta ? `<div class="meta">${meta}</div>` : ''}${prefs ? `<div class="meta">${prefs}</div>` : ''}</div>
+          ${waMini(r.phone, waHello(r), `WhatsApp ${firstName(r.name)}`)}
           ${count ? `<div class="count" title="Aanstellingen seizoen ${season}">${counts[r.id] || 0}<small>dit seizoen</small></div>` : ''}
         </article>`;
   };
@@ -989,14 +998,42 @@ function refAssignments(r) {
 }
 
 // Call / WhatsApp buttons for a phone number (Dutch 06 numbers become +316 for WhatsApp).
-function contactButtons(phone) {
+function contactButtons(phone, text = '') {
   const digits = String(phone).replace(/[^\d+]/g, '');
-  const intl = digits.startsWith('+') ? digits.slice(1) : digits.startsWith('00') ? digits.slice(2) : digits.startsWith('0') ? '31' + digits.slice(1) : digits;
   return `<div class="contact-btns">
     <a class="btn icon-label" href="tel:${esc(digits)}">${ICONS.call}Bellen</a>
-    <a class="btn icon-label" href="https://wa.me/${esc(intl)}" target="_blank" rel="noopener">${ICONS.chat}WhatsApp</a>
+    <a class="btn icon-label" href="${esc(waLink(phone, text))}" target="_blank" rel="noopener">${ICONS.chat}WhatsApp</a>
   </div>`;
 }
+
+// ---------- Filter op team (categorie) ----------
+// Knoppen met de teams die in de lijst voorkomen, in de vaste volgorde (O7 … VR30+). Eén keuze tegelijk.
+function teamChips(list, current, attr) {
+  const cats = CATEGORIES.filter((c) => list.some((m) => m.category === c));
+  if (cats.length < 2) return '';
+  const chip = (c, label) => `<button class="chip ${current === c ? 'on' : ''}" ${attr}="${c || ''}" aria-pressed="${current === c}">${label}</button>`;
+  return `<div class="chips scroll team-filter" role="group" aria-label="Filter op team">${chip(null, 'Alle teams')}${cats.map((c) => chip(c, c)).join('')}</div>`;
+}
+
+// ---------- WhatsApp ----------
+// wa.me-link met een kant-en-klaar bericht. Nederlandse 06-nummers worden +316.
+function waLink(phone, text = '') {
+  const digits = String(phone || '').replace(/[^\d+]/g, '');
+  const intl = digits.startsWith('+') ? digits.slice(1) : digits.startsWith('00') ? digits.slice(2) : digits.startsWith('0') ? '31' + digits.slice(1) : digits;
+  return `https://wa.me/${intl}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+}
+// Klein groen WhatsApp-knopje (in een lijst naast een naam).
+const waMini = (phone, text, title = 'WhatsApp') => (phone
+  ? `<a class="wa-mini" href="${esc(waLink(phone, text))}" target="_blank" rel="noopener" title="${esc(title)}" aria-label="${esc(title)}">${ICONS.chat}</a>` : '');
+const firstName = (name) => String(name || '').split(/\s+/)[0];
+const appLink = (hash = '') => `${location.origin}${location.pathname}${hash ? '#' + hash : ''}`;
+const matchText = (m) => `${fmtDate(m.date, { weekday: 'short', day: 'numeric', month: 'short' })} om ${m.time} ${m.home}${m.away ? ' – ' + m.away : ''}${m.field ? ` (${m.field})` : ''}`;
+// Berichten die de planner met één tik verstuurt.
+const waAsk = (r, m) => `Hoi ${firstName(r.name)}, kun jij ${matchText(m)} fluiten? Laat je het even weten? Groet, ${firstName(store.user.name)}`;
+const waRemind = (r, day) => `Hoi ${firstName(r.name)}, wil je je beschikbaarheid voor ${fmtDate(day, { weekday: 'long', day: 'numeric', month: 'long' })} doorgeven in de app? ${appLink('beschikbaarheid')} Groet, ${firstName(store.user.name)}`;
+const waHello = (r) => `Hoi ${firstName(r.name)}, `;
+// Een tik op een WhatsApp-knopje mag niet ook de rij eromheen openen.
+document.addEventListener('click', (e) => { if (e.target.closest?.('a.wa-mini')) e.stopPropagation(); }, true);
 
 function refForm(r) {
   sheet(`
@@ -1090,8 +1127,11 @@ function overzicht(view) {
   // Only what this referee likes to whistle ("Wat fluit je graag?" in Instellingen), unless they ask for all.
   const prefs = state.data.referees.find((r) => r.id === me)?.pref_categories || [];
   const filtered = prefs.length > 0 && !state.showAllOpen;
-  const open = filtered ? allOpen.filter((m) => prefs.includes(m.category)) : allOpen;
-  const hiddenCount = allOpen.length - open.length;
+  const openPref = filtered ? allOpen.filter((m) => prefs.includes(m.category)) : allOpen;
+  const hiddenCount = allOpen.length - openPref.length;
+  // Snel één team bekijken; vervalt als dat team niet (meer) in de lijst staat.
+  if (state.openTeam && !openPref.some((m) => m.category === state.openTeam)) state.openTeam = null;
+  const open = state.openTeam ? openPref.filter((m) => m.category === state.openTeam) : openPref;
   const filterNote = !prefs.length ? ''
     : filtered ? `<p class="muted list-intro filter-note">Alleen wat je graag fluit: <b>${esc(prefLabel(prefs, CATEGORIES))}</b>. <a href="#profiel">Aanpassen</a>${hiddenCount ? ` · <button class="linkish" id="show-all-open">Toon alle ${allOpen.length}</button>` : ''}</p>`
     : `<p class="muted list-intro filter-note">Alle open wedstrijden. <button class="linkish" id="show-pref-open">Alleen wat ik graag fluit</button></p>`;
@@ -1130,7 +1170,7 @@ function overzicht(view) {
       + (notifications.length ? `<a class="link-row pad-row" href="#meldingen"><span>Alle meldingen</span>${ICONS.arrow}</a>` : ''))}
     <div id="open-list"></div>
     ${dayList('Open wedstrijden', `<span class="pill ${open.length ? 'open' : ''}">${open.length} zonder scheids</span>`,
-      filterNote + (openRows ? `<p class="muted list-intro">Nog geen scheidsrechter voor de komende ${OPEN_DAYS_AHEAD / 7} weken. Tik op <b>Ik kan fluiten</b>, dan krijgt de planner bericht.</p>${openRows}`
+      filterNote + teamChips(openPref, state.openTeam, 'data-open-team') + (openRows ? `<p class="muted list-intro">Nog geen scheidsrechter voor de komende ${OPEN_DAYS_AHEAD / 7} weken. Tik op <b>Ik kan fluiten</b>, dan krijgt de planner bericht.</p>${openRows}`
         : `<p class="muted list-empty">${hiddenCount ? 'Geen open wedstrijden in wat je graag fluit.' : 'Alle wedstrijden van de komende weken hebben een scheidsrechter.'}</p>`))}`;
 
   view.querySelectorAll('[data-ics]').forEach((b) => b.onclick = () => calendarSheet(matches.find((x) => x.id === b.dataset.ics)));
@@ -1139,6 +1179,7 @@ function overzicht(view) {
   const showAll = $('#show-all-open'), showPref = $('#show-pref-open');
   if (showAll) showAll.onclick = () => { state.showAllOpen = true; render(); };
   if (showPref) showPref.onclick = () => { state.showAllOpen = false; render(); };
+  view.querySelectorAll('[data-open-team]').forEach((b) => b.onclick = () => { state.openTeam = b.dataset.openTeam || null; render(); });
   view.querySelectorAll('[data-offer]').forEach((b) => b.onclick = () => {
     b.disabled = true;
     act(() => store.addOffer(b.dataset.offer), 'Doorgegeven: de planner weet dat je kunt fluiten.');
@@ -1541,16 +1582,31 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }
 
+// Soorten meldingen om op te filteren (alleen de soorten die er zijn, worden getoond).
+const NOTIF_TYPES = [
+  ['aanstelling', 'Aanstellingen', ['assigned', 'changed']],
+  ['afmelding', 'Afmeldingen', ['withdrawn', 'cancelled', 'unavailable']],
+  ['aanbod', 'Aanbiedingen', ['offer']],
+  ['aanmelding', 'Aanmeldingen', ['signup']],
+  ['herinnering', 'Herinneringen', ['reminder']],
+];
+
 function meldingen(view) {
-  const list = state.data.notifications;
+  const all = state.data.notifications;
+  const types = NOTIF_TYPES.map(([k, label, kinds]) => [k, label, all.filter((n) => kinds.includes(n.kind))]).filter(([, , l]) => l.length);
+  if (state.notifFilter && !types.some(([k]) => k === state.notifFilter)) state.notifFilter = null;
+  const list = state.notifFilter ? types.find(([k]) => k === state.notifFilter)[2] : all;
   const unread = list.filter((n) => !n.read_at);
+  const chip = (k, label, l) => `<button class="chip ${state.notifFilter === k ? 'on' : ''}" data-nfilter="${k || ''}" aria-pressed="${state.notifFilter === k}">${label}${l ? ` <small>${l.length}</small>` : ''}</button>`;
   view.innerHTML = `
     ${pushCard()}
+    ${types.length > 1 ? `<div class="chips scroll notif-filter">${chip(null, 'Alle', null)}${types.map(([k, label, l]) => chip(k, label, l)).join('')}</div>` : ''}
     <section class="card day-list">
-      <header class="day-head"><h2>Meldingen</h2>
-        ${unread.length ? `<button class="btn pill-btn" id="read-all">Alles gelezen</button>` : ''}</header>
+      <header class="day-head"><h2>${state.notifFilter ? esc(types.find(([k]) => k === state.notifFilter)[1]) : 'Meldingen'}</h2>
+        ${unread.length ? `<button class="btn pill-btn" id="read-all">${state.notifFilter ? 'Deze gelezen' : 'Alles gelezen'}</button>` : ''}</header>
       ${list.map(notifRow).join('') || '<p class="muted list-empty">Nog geen meldingen. Hier zie je aanstellingen, wijzigingen en afmeldingen.</p>'}
     </section>`;
+  view.querySelectorAll('[data-nfilter]').forEach((b) => b.onclick = () => { state.notifFilter = b.dataset.nfilter || null; render(); });
   const ra = $('#read-all');
   if (ra) ra.onclick = () => act(() => store.markRead(unread.map((n) => n.id)));
   bindNotifRows(view);

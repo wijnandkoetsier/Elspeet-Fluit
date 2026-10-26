@@ -673,3 +673,18 @@ details.parts li.cancelled span { color: var(--muted); } details.parts li.cancel
 .dup-names span { display: flex; flex-direction: column; min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--soft); }
 .dup-names small { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
 .choose { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+
+/* Filters: meldingen op soort, wedstrijden op team */
+.chips.notif-filter, .chips.team-filter { margin: 0 0 10px; }
+.day-list .chips.team-filter { margin: 10px 0 4px; padding-top: 2px; }
+.chips.notif-filter .chip small, .chips.team-filter .chip small { font-weight: 700; opacity: .7; margin-left: 2px; }
+
+/* WhatsApp-knopje naast een naam */
+.wa-mini { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%;
+  background: var(--brand-soft); color: var(--brand); text-decoration: none; }
+.wa-mini svg { width: 20px; height: 20px; }
+.wa-mini:active { filter: brightness(.95); }
+.cand-row { display: flex; align-items: center; gap: 8px; }
+.cand-row .cand { flex: 1; min-width: 0; }
+.ref .wa-mini { align-self: center; }
+.arow .wa-mini { width: 36px; height: 36px; }

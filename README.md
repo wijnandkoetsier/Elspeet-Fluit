@@ -25,7 +25,8 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - **Publiceren** maakt de aanstellingen zichtbaar voor scheidsrechters
 - Per dag zien **wie er kan fluiten**, en beschikbaarheid invullen namens iemand (ook voor scheidsrechters zonder account)
 - Zien wie nog niets heeft ingevuld en een herinnering mailen; elke donderdagavond krijgt wie nog niets heeft ingevuld automatisch een herinnering (melding en pushmelding)
-- Telefoonnummer per scheidsrechter, met knoppen om te bellen of te WhatsAppen
+- Telefoonnummer per scheidsrechter, met knoppen om te bellen of te WhatsAppen. WhatsApp met een kant-en-klaar bericht bij **Toewijzen** ("kun jij … fluiten?"), bij **Nog niets ingevuld** (herinnering) en in de lijst bij **Scheidsen**
+- Filteren: **Meldingen** op soort, **Planning** en **Open wedstrijden** op team
 - **Aanmelden als nieuwe scheidsrechter** vanaf het inlogscherm (naam, e-mail, telefoon, opmerking). Planners krijgen een melding en zien de aanmelding bovenaan **Scheidsen**: toevoegen (dan kan iemand meteen inloggen) of afwijzen
 - Waarschuwing in de planning en een melding als een aangestelde scheidsrechter zich afmeldt
 - Andere planners aanwijzen: bij **Scheidsen → Toevoegen** kies je Scheidsrechter, Planner (plant alleen, wordt nooit ingepland) of Allebei
