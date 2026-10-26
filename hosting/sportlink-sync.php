@@ -41,12 +41,20 @@ function respond(array $data, int $status = 200): never
 
 function config_candidates(): array
 {
-    return array_values(array_filter([
+    // Vimexx/DirectAdmin: .../domains/vv-elspeet.nl/public_html/scheids/sportlink/ → de map naast public_html,
+    // en de hoofdmap van het account (/home/gebruiker). Beide zijn niet via internet te openen.
+    $outside = [];
+    for ($d = __DIR__; $d !== dirname($d); $d = dirname($d)) {
+        if (in_array(basename($d), ['public_html', 'private_html', 'www', 'httpdocs'], true)) $outside[] = dirname($d) . '/elspeet-fluit-config.php';
+    }
+    if (preg_match('#^(/home/[^/]+)/#', __DIR__, $m)) $outside[] = $m[1] . '/elspeet-fluit-config.php';
+    return array_values(array_unique(array_filter([
         getenv('ELSPEET_FLUIT_CONFIG') ?: null,
-        dirname(__DIR__, 2) . '/elspeet-fluit-config.php', // naast de map www (aanbevolen)
+        ...$outside,
+        dirname(__DIR__, 2) . '/elspeet-fluit-config.php', // naast de map www (TransIP)
         dirname(__DIR__) . '/elspeet-fluit-config.php',
         __DIR__ . '/elspeet-fluit-config.php',               // noodoplossing, minder veilig
-    ]));
+    ])));
 }
 
 function load_config(): array
@@ -130,6 +138,8 @@ function supabase(array $c, string $method, string $path, $body = null, array $e
 
 function authorize(array $c): string
 {
+    // Cronjob die het bestand direct met PHP start (geen webadres): mag altijd.
+    if (PHP_SAPI === 'cli') return 'cron';
     $token = $_GET['token'] ?? ($_SERVER['HTTP_X_SYNC_TOKEN'] ?? '');
     if ($token !== '' && hash_equals((string) $c['sync_token'], (string) $token)) return 'cron';
 
@@ -565,6 +575,8 @@ function log_run(array $c, bool $ok, array $r, ?string $message): void
 // ---------- Uitvoeren ----------
 
 $config = null;
+// Vanaf de opdrachtregel (cronjob): "php sportlink-sync.php test" = testmodus.
+if (PHP_SAPI === 'cli' && in_array('test', $argv ?? [], true)) $_GET['mode'] = 'test';
 try {
     $config = load_config();
     cors($config);
