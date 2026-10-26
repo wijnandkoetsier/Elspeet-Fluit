@@ -132,10 +132,15 @@ language sql stable security definer set search_path = public as $$
   select id from referees where user_id = auth.uid();
 $$;
 
+-- Wedstrijd in een melding: "do 30 okt 20:00 · Elspeet VR30+1 – Hierden VR30+2 · Veld 1 A".
+-- Zelfde opbouw als matchLabel() in js/logic.js.
 create or replace function public.match_label(m public.matches) returns text
 language sql immutable as $$
-  select to_char(m.date, 'DD-MM') || ' ' || m.time || ' ' || m.home
-    || coalesce(' – ' || nullif(m.away, ''), '') || coalesce(', ' || nullif(m.field, ''), '');
+  select (array['zo','ma','di','wo','do','vr','za'])[extract(dow from m.date)::int + 1] || ' '
+    || extract(day from m.date)::int || ' '
+    || (array['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'])[extract(month from m.date)::int] || ' '
+    || m.time || ' · ' || m.home
+    || coalesce(' – ' || nullif(m.away, ''), '') || coalesce(' · ' || nullif(m.field, ''), '');
 $$;
 
 -- Aanmelden kan alleen met een e-mailadres dat de planner heeft toegevoegd.

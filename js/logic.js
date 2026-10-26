@@ -241,9 +241,12 @@ export function toCSV(rows) {
 
 // ---------- Meldingen (zelfde regels als de database-triggers in supabase/schema.sql) ----------
 
+// "do 30 okt 20:00 · Elspeet VR30+1 – Hierden VR30+2 · Veld 1 A". Zelfde als match_label() in schema.sql.
 export function matchLabel(m) {
-  const [, mo, d] = m.date.split('-');
-  return `${d}-${mo} ${m.time} ${m.home}${m.away ? ` – ${m.away}` : ''}${m.field ? `, ${m.field}` : ''}`;
+  const [y, mo, d] = m.date.split('-').map(Number);
+  const day = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'][new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
+  const month = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'][mo - 1];
+  return `${day} ${d} ${month} ${m.time} · ${m.home}${m.away ? ` – ${m.away}` : ''}${m.field ? ` · ${m.field}` : ''}`;
 }
 
 // old/neu are the match before and after a change; neu = null when the match is deleted.
