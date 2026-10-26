@@ -1243,6 +1243,44 @@ function voorkeuren(view) {
 }
 
 // How to put the app on the home screen, for the phone in hand (or both, on a computer).
+// Planner: "Ik fluit zelf ook" aan/uit. Uit = alleen planner: niet ingepland, geen Mijn fluiten,
+// beschikbaarheid of voorkeuren, en geen schakelaar Planner | Scheids. Staat op referees.is_referee.
+function selfRefCard(ref) {
+  if (store.user.role !== 'planner' || !ref) return '';
+  const on = ref.is_referee !== false;
+  return `
+    <section class="card">
+      <h3>Zelf fluiten</h3>
+      <label class="check"><input type="checkbox" id="self-ref" ${on ? 'checked' : ''}> Ik fluit zelf ook</label>
+      <p class="muted">${on
+        ? 'Uitzetten als je alleen plant: dan word je niet meer ingepland en verdwijnen Mijn fluiten, beschikbaarheid en voorkeuren.'
+        : 'Je bent nu alleen planner. Zet dit aan als je zelf ook wilt fluiten.'}</p>
+    </section>`;
+}
+
+function bindSelfRef(ref) {
+  const box = $('#self-ref');
+  if (!box) return;
+  box.onchange = async () => {
+    const on = box.checked;
+    const today = todayISO();
+    const coming = state.data.matches.filter((m) => m.referee_id === ref.id && m.date >= today && !m.cancelled).length;
+    if (!on && coming && !await ask(`Je staat nog bij ${plural(coming, 'wedstrijd', 'wedstrijden')} als scheidsrechter. Die blijven staan; wijs ze zo nodig opnieuw toe. Toch uitzetten?`, 'Uitzetten')) {
+      box.checked = true;
+      return;
+    }
+    // Direct zichtbaar: ook de schakelaar Planner | Scheids en Overzicht kijken naar is_referee.
+    for (const list of [state.raw?.referees, state.data.referees]) {
+      const r = list?.find((x) => x.id === ref.id);
+      if (r) r.is_referee = on;
+    }
+    if (!on) { try { localStorage.setItem(VIEW_KEY, 'planner'); } catch {} }
+    derive();
+    render();
+    act(() => store.saveReferee({ id: ref.id, is_referee: on }), on ? 'Je fluit zelf ook weer mee' : 'Zelf fluiten staat uit');
+  };
+}
+
 // Banner at the top of Overzicht (everyone, on a phone): put the app on the home screen.
 // Hidden once installed (opened from the home screen) or after "Later" (for two weeks, per device).
 const INSTALL_LATER_KEY = 'scheidsapp-installeren-later';
@@ -1320,6 +1358,7 @@ function profiel(view) {
       <p class="size-preview">Zo ziet de tekst eruit. De keuze geldt alleen voor dit toestel.</p>
     </section>
     ${ref && !isPlannerUser ? prefsCard(ref) : ''}
+    ${selfRefCard(ref)}
     ${pushCard(true)}
     ${standalone ? '' : installCard()}
     <section class="card">
@@ -1333,6 +1372,7 @@ function profiel(view) {
     act(() => store.updateProfile({ name: f.get('name').trim(), phone: ref ? (f.get('phone') || '').trim() || null : undefined }), 'Opgeslagen');
   };
   bindPush();
+  bindSelfRef(ref);
   if (ref && !isPlannerUser) bindPrefs(view, ref);
   const inst = $('#install');
   if (inst) inst.onclick = async () => { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; render(); };
@@ -1513,6 +1553,7 @@ function plannerOverzicht(view) {
           const prefs = referees.find((r) => r.id === me)?.pref_categories || [];
           return prefs.length ? 'Graag: ' + esc(prefLabel(prefs, CATEGORIES)) : 'Geef je voorkeur op voor groepen en teams';
         })())
+        + menuLink('profiel', ICONS.settings, 'Fluit je zelf niet?', 'Zet zelf fluiten uit bij Instellingen, dan verdwijnen deze opties')
         : '<p class="muted list-empty">Je staat nog niet als scheidsrechter in de lijst.</p>'}
     </section>`}
     <section class="card day-list">
