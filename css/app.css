@@ -655,3 +655,21 @@ details.parts li span small { display: block; color: var(--muted); font-size: .7
 .mrow.cancelled .teams { text-decoration: line-through; text-decoration-color: var(--muted); color: var(--muted); }
 .mrow.cancelled .t { color: var(--muted); text-decoration: line-through; }
 details.parts li.cancelled span { color: var(--muted); } details.parts li.cancelled b { color: var(--muted); text-decoration: line-through; }
+
+/* Scheidsen: aanmeldingen van nieuwe scheidsrechters */
+.signups .signup { display: flex; gap: 12px; align-items: flex-start; padding: 14px; }
+.signups .signup + .signup { border-top: 1px solid var(--line); }
+.signups .signup .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.signups .signup .meta { margin: 0; overflow-wrap: anywhere; }
+.signup-note { margin: 0; font-size: .9rem; color: var(--text); background: var(--soft); border-radius: 8px; padding: 8px 10px; }
+.signup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.signups .contact-btns { margin: 0; }
+.login .form textarea { font: inherit; }
+
+/* Scheidsen: mogelijk dubbele scheidsrechters samenvoegen */
+.dups .dup { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.dups .dup + .dup { border-top: 1px solid var(--line); }
+.dup-names { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dup-names span { display: flex; flex-direction: column; min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--soft); }
+.dup-names small { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.choose { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }

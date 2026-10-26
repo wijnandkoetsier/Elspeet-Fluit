@@ -16,7 +16,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 **Planner**
 - Thuiswedstrijden **automatisch uit Sportlink** (Club.Dataservice), elk uur bijgewerkt, t/m 31 december (in blokken van 6 weken); of handmatig/CSV
 - Speelduur per categorie automatisch ingevuld (bijv. O9 45 min, O13 65 min, senioren 105 min)
-- Scheidsrechters die in Sportlink al zijn aangesteld worden overgenomen
+- Scheidsrechters die in Sportlink al zijn aangesteld worden overgenomen en op naam gekoppeld aan wie er al staat (zonder accenten, met of zonder tussenvoegsel, of op voorletter + achternaam). Bij twijfel staan ze bij **Scheidsen → Mogelijk dubbel**, met een knop **Samenvoegen**. Bij een aanmelding of handmatig toevoegen vraagt de app of de persoon er al staat
 - Wedstrijden markeren waarvoor de KNVB zelf aanstelt
 - **Afgelaste wedstrijden** blijven zichtbaar met het label Afgelast (uit Sportlink, of zelf aan te vinken). Er is dan geen scheidsrechter nodig; de aangestelde scheidsrechter krijgt een melding
 - **JO7**: alle JO7-wedstrijden thuis op één dag (alle teams samen) worden één kaartje met één scheidsrechter; de wedstrijden klap je eronder open. Een ochtend bij een andere club komt niet in de app. Thuis of uit bepaalt de koppeling met de accommodatie, plaats en het veld uit Sportlink (staat er "Elspeet" in, dan is het thuis)
@@ -26,6 +26,7 @@ De scheidsrechtersapp van VV Elspeet: clubscheidsrechters plannen en indelen van
 - Per dag zien **wie er kan fluiten**, en beschikbaarheid invullen namens iemand (ook voor scheidsrechters zonder account)
 - Zien wie nog niets heeft ingevuld en een herinnering mailen; elke donderdagavond krijgt wie nog niets heeft ingevuld automatisch een herinnering (melding en pushmelding)
 - Telefoonnummer per scheidsrechter, met knoppen om te bellen of te WhatsAppen
+- **Aanmelden als nieuwe scheidsrechter** vanaf het inlogscherm (naam, e-mail, telefoon, opmerking). Planners krijgen een melding en zien de aanmelding bovenaan **Scheidsen**: toevoegen (dan kan iemand meteen inloggen) of afwijzen
 - Waarschuwing in de planning en een melding als een aangestelde scheidsrechter zich afmeldt
 - Andere planners aanwijzen: bij **Scheidsen → Toevoegen** kies je Scheidsrechter, Planner (plant alleen, wordt nooit ingepland) of Allebei
 - Weekprogramma en seizoenscijfers exporteren (CSV, opent in Excel)

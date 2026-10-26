@@ -349,3 +349,44 @@ export function prefLabel(prefs, categories) {
   const st = prefState(prefs, categories);
   return Object.entries(st).filter(([, s]) => s.on).map(([g, s]) => (s.teams.length ? s.teams.join(', ') : g)).join(', ');
 }
+
+// ---------- Dezelfde persoon op naam herkennen ----------
+// Zelfde regels als name_parts() / loose_key() / initial_key() in hosting/sportlink-sync.php.
+const NAME_INFIXES = new Set(['van', 'der', 'den', 'de', 'het', 't', 'ter', 'ten', 'te', 'in', 'op', 'v', 'vd', 'd', 'h']);
+export const nameParts = (name) => String(name || '').normalize('NFD').replace(/\p{Mn}/gu, '').toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+const coreParts = (name) => { const [first, ...rest] = nameParts(name); return first ? [first, ...rest.filter((t) => !NAME_INFIXES.has(t))] : []; };
+export const nameKey = (name) => nameParts(name).join('');
+const looseKey = (name) => { const p = coreParts(name); return p.length < 2 ? p.join('') : p[0] + p[p.length - 1]; };
+const initialKey = (name) => { const p = coreParts(name); return p.length < 2 ? '' : p[0][0] + p[p.length - 1]; };
+const isInitial = (name) => (nameParts(name)[0] || '').length === 1;
+
+// Zijn dit (waarschijnlijk) dezelfde persoon? Precies dezelfde naam, voornaam + achternaam zonder
+// tussenvoegsels, of voorletter + achternaam als één van de twee alleen een voorletter heeft.
+export function sameName(a, b) {
+  if (!a || !b) return false;
+  if (nameKey(a) === nameKey(b)) return true;
+  if (looseKey(a) && looseKey(a) === looseKey(b) && coreParts(a).length > 1) return true;
+  return !!initialKey(a) && initialKey(a) === initialKey(b) && (isInitial(a) || isInitial(b));
+}
+
+// Paren scheidsrechters die waarschijnlijk dezelfde persoon zijn (niet als ze allebei een account hebben).
+export function likelyDuplicates(referees) {
+  const out = [];
+  for (let i = 0; i < referees.length; i++) {
+    for (let j = i + 1; j < referees.length; j++) {
+      const a = referees[i], b = referees[j];
+      if (a.user_id && b.user_id) continue;
+      if (sameName(a.name, b.name)) out.push([a, b]);
+    }
+  }
+  return out;
+}
+
+// Welke van twee blijft bij samenvoegen: die met een account, dan met e-mail; de volledigste naam wint.
+export function mergePlan(a, b) {
+  const score = (r) => (r.user_id ? 4 : 0) + (r.email ? 2 : 0) + (r.is_planner ? 1 : 0);
+  const [keep, drop] = score(b) > score(a) ? [b, a] : [a, b];
+  const name = isInitial(keep.name) && !isInitial(drop.name) ? drop.name : keep.name;
+  return { keep, drop, name };
+}

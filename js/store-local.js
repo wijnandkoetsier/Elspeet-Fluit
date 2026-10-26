@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v11';
+const KEY = 'scheidsapp-demo-v13';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -18,6 +18,8 @@ function seed() {
     { id: 'r3', name: 'Chris Bakker', email: '', pref_categories: [], avoid_categories: [], active: true, user_id: null },
     // Daan is planner én scheidsrechter.
     { id: 'r4', name: 'Daan Visser', email: 'daan@example.nl', pref_categories: ['1e', '2e'], avoid_categories: [], active: true, user_id: 'u4', is_planner: true },
+    // Door de Sportlink-koppeling aangemaakt (alleen voorletter, geen e-mail): lijkt op Bram Jansen.
+    { id: 'r6', name: 'B. Jansen', email: '', sportlink_name: 'bjansen', pref_categories: [], avoid_categories: [], active: true, user_id: null },
     // Eva plant alleen en fluit zelf niet.
     { id: 'r5', name: 'Eva Mulder', email: 'eva@example.nl', pref_categories: [], avoid_categories: [], active: true, is_referee: false, user_id: 'u5', is_planner: true },
   ];
@@ -53,13 +55,18 @@ function seed() {
     body: `Voor ${new Date(d2 + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })} weten we nog niet of je kunt fluiten.`,
     date: d2, created_at: new Date(Date.now() - 2 * 3600000).toISOString(), read_at: null,
   }];
-  return { matches, referees, availability, notifications, offers: [], user: null };
+  // Een aanmelding van een nieuwe scheidsrechter, zoals die via het inlogscherm binnenkomt.
+  const signups = [{ id: uid(), name: 'Femke Hoekstra', email: 'femke@example.nl', phone: '06 24681357', note: 'Fluit graag pupillen', created_at: new Date(Date.now() - 3600000).toISOString() }];
+  notifications.push({ id: uid(), referee_id: null, to_planners: true, kind: 'signup', title: 'Nieuwe aanmelding: Femke Hoekstra',
+    body: 'femke@example.nl · 06 24681357 · Fluit graag pupillen', date: null, created_at: signups[0].created_at, read_at: null });
+  return { matches, referees, availability, notifications, offers: [], signups, user: null };
 }
 
 function load() {
   try {
     const db = JSON.parse(localStorage.getItem(KEY)) || seed();
     db.offers ||= [];
+    db.signups ||= [];
     return db;
   } catch { return seed(); }
 }
@@ -104,7 +111,7 @@ export function createLocalStore() {
     async loadAll() {
       const me = db.user?.referee_id;
       const notifications = db.notifications.filter((n) => n.referee_id === me || (n.to_planners && isPlanner()));
-      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications, offers: [...db.offers], lastSync: db.lastSync || null };
+      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications, offers: [...db.offers], signups: [...db.signups], lastSync: db.lastSync || null };
       return {
         matches: [...db.matches],
         referees: db.referees.filter((r) => r.id === me),
@@ -136,6 +143,35 @@ export function createLocalStore() {
       else db.referees.push({ active: true, is_referee: true, pref_categories: [], avoid_categories: [], user_id: null, ...r, is_planner: !!r.invite_planner, id: uid() });
       save();
     },
+    // Zelfde regels als request_signup() in schema.sql.
+    async requestSignup({ name, email, phone, note }) {
+      const e = String(email || '').trim().toLowerCase();
+      if (db.referees.some((r) => (r.email || '').toLowerCase() === e)) return 'bekend';
+      if (db.signups.some((r) => r.email === e)) return 'al_aangemeld';
+      db.signups.push({ id: uid(), name: name.trim(), email: e, phone: phone || null, note: note || null, created_at: new Date().toISOString() });
+      notify([{ referee_id: null, to_planners: true, kind: 'signup', title: `Nieuwe aanmelding: ${name.trim()}`,
+        body: [e, phone, note].filter(Boolean).join(' · '), date: null, match_id: null }]);
+      save();
+      return 'ok';
+    },
+    // Zelfde als merge_referees() in schema.sql (zonder meldingen).
+    async mergeReferees(keepId, dropId, name) {
+      const k = db.referees.find((r) => r.id === keepId), d = db.referees.find((r) => r.id === dropId);
+      if (!k || !d || k === d) return;
+      if (k.user_id && d.user_id) throw new Error('Beide hebben al een eigen account. Samenvoegen kan dan niet.');
+      db.matches.forEach((m) => { if (m.referee_id === dropId) m.referee_id = keepId; });
+      db.availability = db.availability.filter((a) => !(a.referee_id === dropId && db.availability.some((b) => b.referee_id === keepId && b.date === a.date)));
+      db.availability.forEach((a) => { if (a.referee_id === dropId) a.referee_id = keepId; });
+      db.offers = db.offers.filter((o) => !(o.referee_id === dropId && db.offers.some((x) => x.referee_id === keepId && x.match_id === o.match_id)));
+      db.offers.forEach((o) => { if (o.referee_id === dropId) o.referee_id = keepId; });
+      db.notifications.forEach((n) => { if (n.referee_id === dropId) n.referee_id = keepId; });
+      Object.assign(k, { name: name || k.name, email: k.email || d.email, phone: k.phone || d.phone, user_id: k.user_id || d.user_id,
+        sportlink_name: k.sportlink_name || d.sportlink_name, pref_categories: k.pref_categories?.length ? k.pref_categories : d.pref_categories,
+        is_planner: k.is_planner || d.is_planner, is_referee: k.is_referee !== false || d.is_referee !== false });
+      db.referees = db.referees.filter((r) => r.id !== dropId);
+      save();
+    },
+    async deleteSignup(id) { db.signups = db.signups.filter((r) => r.id !== id); save(); },
     async deleteReferee(id) {
       db.referees = db.referees.filter((r) => r.id !== id);
       db.matches.forEach((m) => { if (m.referee_id === id) { m.referee_id = null; m.published = false; } });

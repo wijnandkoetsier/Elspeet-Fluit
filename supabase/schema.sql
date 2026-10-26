@@ -112,6 +112,17 @@ create table if not exists public.offers (
   unique (match_id, referee_id)
 );
 
+-- Aanmelden als nieuwe scheidsrechter (vanaf het inlogscherm, zonder account). Alleen planners zien ze.
+create table if not exists public.signup_requests (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(name) between 2 and 80),
+  email text not null check (length(email) <= 200 and email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+  phone text check (phone is null or length(phone) <= 30),
+  note text check (note is null or length(note) <= 500),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists signup_requests_email_idx on public.signup_requests (lower(email));
+
 -- Pushmeldingen: één rij per toestel dat meldingen heeft aangezet.
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -216,10 +227,78 @@ language sql stable security definer set search_path = public as $$
    where p.role = 'planner' and is_planner();
 $$;
 
+-- Aanmelding als scheidsrechter: kan zonder account. Zet de aanmelding klaar voor de planners
+-- en stuurt hen een melding (ook als pushmelding). Antwoord: 'ok', 'bekend' of 'al_aangemeld'.
+create or replace function public.request_signup(p_name text, p_email text, p_phone text default null, p_note text default null)
+returns text language plpgsql security definer set search_path = public as $$
+declare
+  e text := lower(trim(coalesce(p_email, '')));
+  n text := trim(coalesce(p_name, ''));
+  ph text := nullif(trim(coalesce(p_phone, '')), '');
+  nt text := nullif(trim(coalesce(p_note, '')), '');
+begin
+  if exists (select 1 from referees where lower(email) = e) then return 'bekend'; end if;
+  if exists (select 1 from signup_requests where lower(email) = e) then return 'al_aangemeld'; end if;
+  -- Rem op misbruik: niet meer dan 10 aanmeldingen per uur.
+  if (select count(*) from signup_requests where created_at > now() - interval '1 hour') >= 10 then
+    raise exception 'Er zijn net veel aanmeldingen gedaan. Probeer het over een uur opnieuw.';
+  end if;
+  insert into signup_requests (name, email, phone, note) values (n, e, ph, nt);
+  insert into notifications (to_planners, kind, title, body)
+  values (true, 'signup', 'Nieuwe aanmelding: ' || n, e || coalesce(' · ' || ph, '') || coalesce(' · ' || nt, ''));
+  return 'ok';
+end $$;
+revoke execute on function public.request_signup(text, text, text, text) from public;
+grant execute on function public.request_signup(text, text, text, text) to anon, authenticated;
+
+-- Twee scheidsrechters die dezelfde persoon zijn samenvoegen (bijv. één uit Sportlink en één via een
+-- aanmelding). Alles van p_drop gaat naar p_keep: aanstellingen, beschikbaarheid, aanbiedingen en meldingen;
+-- lege gegevens van p_keep worden aangevuld. Alleen voor planners.
+create or replace function public.merge_referees(p_keep uuid, p_drop uuid, p_name text default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare k referees; d referees;
+begin
+  if not is_planner() then raise exception 'Alleen planners kunnen scheidsrechters samenvoegen.'; end if;
+  if p_keep = p_drop then return; end if;
+  select * into k from referees where id = p_keep;
+  select * into d from referees where id = p_drop;
+  if k.id is null or d.id is null then raise exception 'Scheidsrechter niet gevonden.'; end if;
+  if k.user_id is not null and d.user_id is not null then
+    raise exception 'Beide hebben al een eigen account. Samenvoegen kan dan niet.';
+  end if;
+  perform set_config('app.merging_referees', 'on', true);
+  update matches set referee_id = p_keep where referee_id = p_drop;
+  delete from availability a where a.referee_id = p_drop
+    and exists (select 1 from availability b where b.referee_id = p_keep and b.date = a.date);
+  update availability set referee_id = p_keep where referee_id = p_drop;
+  delete from offers o where o.referee_id = p_drop
+    and exists (select 1 from offers x where x.referee_id = p_keep and x.match_id = o.match_id);
+  update offers set referee_id = p_keep where referee_id = p_drop;
+  update notifications set referee_id = p_keep where referee_id = p_drop;
+  delete from referees where id = p_drop;
+  update referees set
+    name = coalesce(nullif(trim(p_name), ''), name),
+    email = coalesce(email, d.email),
+    phone = coalesce(phone, d.phone),
+    user_id = coalesce(user_id, d.user_id),
+    sportlink_name = coalesce(sportlink_name, d.sportlink_name),
+    pref_categories = case when cardinality(pref_categories) = 0 then d.pref_categories else pref_categories end,
+    invite_planner = invite_planner or d.invite_planner,
+    is_referee = is_referee or d.is_referee
+  where id = p_keep;
+  perform set_config('app.merging_referees', 'off', true);
+end $$;
+revoke execute on function public.merge_referees(uuid, uuid, text) from public, anon;
+grant execute on function public.merge_referees(uuid, uuid, text) to authenticated;
+
 -- Meldingen bij wijzigingen in de planning ------------------------------------
 create or replace function public.notify_match_change() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
+  -- Samenvoegen van twee scheidsrechters (merge_referees): geen meldingen, het blijft dezelfde persoon.
+  if current_setting('app.merging_referees', true) = 'on' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
   if tg_op = 'DELETE' then
     if old.published and old.referee_id is not null then
       insert into notifications (referee_id, kind, title, body, date)
@@ -305,6 +384,7 @@ alter table public.notifications enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.sync_runs enable row level security;
 alter table public.offers enable row level security;
+alter table public.signup_requests enable row level security;
 
 -- Scheidsrechters zien alleen hun eigen gegevens; planners zien alles.
 drop policy if exists "profiles read" on public.profiles;
@@ -361,6 +441,11 @@ create policy "offers own insert" on public.offers for insert to authenticated
 create policy "offers delete" on public.offers for delete to authenticated
   using (referee_id = my_referee_id() or is_planner());
 
+-- Aanmeldingen: alleen planners zien en verwerken ze (aanmelden zelf gaat via request_signup).
+drop policy if exists "signups planner" on public.signup_requests;
+create policy "signups planner" on public.signup_requests for all to authenticated
+  using (is_planner()) with check (is_planner());
+
 drop policy if exists "push own" on public.push_subscriptions;
 create policy "push own" on public.push_subscriptions for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -371,6 +456,9 @@ do $$ begin
 exception when others then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.offers;
+exception when others then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.signup_requests;
 exception when others then null; end $$;
 
 -- Herinnering: elke donderdagavond een melding (en pushmelding) voor wie de komende week wedstrijden

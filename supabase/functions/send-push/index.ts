@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
   // De melding zelf uit de database: alleen die van de afgelopen 10 minuten.
   const { data: n, error } = await supabase.from('notifications')
-    .select('id, referee_id, to_planners, title, body, created_at').eq('id', id).maybeSingle();
+    .select('id, referee_id, to_planners, kind, title, body, created_at').eq('id', id).maybeSingle();
   if (error) { console.error('melding lezen mislukt', error.message); return json({ error: error.message }, 500); }
   if (!n) return json({ skipped: 'melding bestaat niet' });
   if (Date.now() - new Date(n.created_at).getTime() > 10 * 60 * 1000) return json({ skipped: 'melding is te oud' });
@@ -51,7 +51,8 @@ Deno.serve(async (req) => {
     title: n.title,
     body: n.body ?? '',
     tag: n.id,
-    url: n.to_planners ? './#planning' : './#meldingen',
+    // Aanmelding → Scheidsen; andere melding voor planners → Planning; voor scheidsrechters → Meldingen.
+    url: n.kind === 'signup' ? './#scheidsrechters' : n.to_planners ? './#planning' : './#meldingen',
   });
 
   let sent = 0;
