@@ -128,6 +128,7 @@ export function createSupabaseStore(url, key) {
     async requestSignup({ name, email, phone, note }) {
       return check(await sb.rpc('request_signup', { p_name: name, p_email: email, p_phone: phone || null, p_note: note || null }));
     },
+    async mergeReferees(keepId, dropId, name) { check(await sb.rpc('merge_referees', { p_keep: keepId, p_drop: dropId, p_name: name || null })); },
     async deleteSignup(id) { check(await sb.from('signup_requests').delete().eq('id', id)); },
     // Ask our own hosting (hosting/sportlink-sync.php) to fetch Sportlink now, as the logged-in planner.
     async syncSportlink(url) {

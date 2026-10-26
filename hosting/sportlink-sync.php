@@ -435,17 +435,67 @@ function referee_display_name(string $raw): string
     return trim(preg_replace('/\s+/', ' ', ($first !== '' ? $first : $initials) . ' ' . expand_infix($infix) . ' ' . $last));
 }
 
-/** Vergelijkingssleutel: kleine letters, zonder spaties en leestekens. */
+/** Kleine letters en zonder accenten ("Daniël" → "daniel"). */
+function fold_name(string $s): string
+{
+    if (class_exists('Normalizer')) {
+        $s = preg_replace('/\p{Mn}/u', '', Normalizer::normalize($s, Normalizer::FORM_D));
+    } else {
+        $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+        if ($t !== false) $s = $t;
+    }
+    return mb_strtolower($s);
+}
+
+/** Woorden van een naam, zonder leestekens. Zelfde regels als nameParts() in js/logic.js. */
+function name_parts(string $name): array
+{
+    $clean = trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ', fold_name($name)));
+    return $clean === '' ? [] : preg_split('/\s+/', $clean);
+}
+
+const NAME_INFIXES = ['van', 'der', 'den', 'de', 'het', 't', 'ter', 'ten', 'te', 'in', 'op', 'v', 'vd', 'd', 'h'];
+
+/** Vergelijkingssleutel: alle woorden aan elkaar, zonder accenten ("Daniël van der Hoorn" → "danielvanderhoorn"). */
 function name_key(string $name): string
+{
+    return implode('', name_parts($name));
+}
+
+/** Zoals Sportlink-namen vóór deze versie werden opgeslagen (met accenten), zodat bestaande koppelingen blijven werken. */
+function legacy_name_key(string $name): string
 {
     return preg_replace('/[^\p{L}\p{N}]/u', '', mb_strtolower($name));
 }
 
-/** Voornaam + achternaam zonder tussenvoegsel ("v/d" kan van der, van den of van de zijn). */
+/** Voornaam + achternaam zonder tussenvoegsels ("v/d" kan van der, van den of van de zijn). */
 function loose_key(string $name): string
 {
-    $parts = preg_split('/\s+/', trim($name)) ?: [];
-    return count($parts) < 2 ? name_key($name) : name_key($parts[0] . end($parts));
+    $p = core_name_parts($name);
+    return count($p) < 2 ? implode('', $p) : $p[0] . end($p);
+}
+
+/** Voornaam (of voorletter) plus de woorden daarna zonder tussenvoegsels. Het eerste woord blijft altijd staan ("T. Jansen"). */
+function core_name_parts(string $name): array
+{
+    $p = name_parts($name);
+    if (!$p) return [];
+    $first = array_shift($p);
+    return array_merge([$first], array_values(array_filter($p, fn($t) => !in_array($t, NAME_INFIXES, true))));
+}
+
+/** Eerste letter van de voornaam + achternaam ("D. van der Hoorn" en "Daniel van der Hoorn" → "dhoorn"). */
+function initial_key(string $name): string
+{
+    $p = core_name_parts($name);
+    return count($p) < 2 ? '' : mb_substr($p[0], 0, 1) . end($p);
+}
+
+/** Is de voornaam alleen een voorletter ("T. Jansen")? */
+function is_initial(string $name): bool
+{
+    $p = name_parts($name);
+    return $p && mb_strlen($p[0]) === 1;
 }
 
 /** Zoek de scheidsrechter bij een Sportlink-naam; maak hem aan als hij nog niet bestaat. */
@@ -454,22 +504,40 @@ function resolve_referee(array $c, array &$refs, string $raw, int &$created): ?s
     if ($raw === '') return null;
     $display = referee_display_name($raw);
     $key = name_key($display);
+    $legacy = legacy_name_key($display);
+    // 1. Al eerder gekoppeld, of precies dezelfde naam (accenten en hoofdletters tellen niet).
     foreach ($refs as $r) {
-        if (($r['sportlink_name'] ?? '') === $key || name_key((string) $r['name']) === $key) return $r['id'];
+        $sl = (string) ($r['sportlink_name'] ?? '');
+        if ($sl !== '' && ($sl === $key || $sl === $legacy)) return $r['id'];
     }
-    // Geen exacte match: probeer voornaam + achternaam, maar alleen als dat precies één persoon is.
-    $loose = array_values(array_filter($refs, fn($r) => empty($r['sportlink_name']) && loose_key((string) $r['name']) === loose_key($display)));
-    if (count($loose) === 1) {
-        supabase($c, 'PATCH', 'referees?id=eq.' . rawurlencode($loose[0]['id']), ['sportlink_name' => $key], ['Prefer: return=minimal']);
-        foreach ($refs as &$r) if ($r['id'] === $loose[0]['id']) $r['sportlink_name'] = $key;
-        unset($r);
-        return $loose[0]['id'];
+    foreach ($refs as $r) {
+        if (name_key((string) $r['name']) === $key) return link_sportlink($c, $refs, $r['id'], $key);
+    }
+    // 2. Voornaam + achternaam, 3. voorletter + achternaam (alleen als één van de twee echt alleen een
+    //    voorletter heeft, zodat "Jeroen Vos" niet aan "Jarnick Vos" vastzit). Alleen bij precies één nog
+    //    niet gekoppelde persoon; bij twijfel komt er een nieuwe bij en zie je hem bij Mogelijk dubbel.
+    $hits = array_values(array_filter($refs, fn($r) => empty($r['sportlink_name']) && loose_key((string) $r['name']) === loose_key($display)));
+    if (count($hits) === 1) return link_sportlink($c, $refs, $hits[0]['id'], $key);
+    $want = initial_key($display);
+    if ($want !== '') {
+        $hits = array_values(array_filter($refs, fn($r) => empty($r['sportlink_name']) && initial_key((string) $r['name']) === $want
+            && (is_initial($display) || is_initial((string) $r['name']))));
+        if (count($hits) === 1) return link_sportlink($c, $refs, $hits[0]['id'], $key);
     }
     $row = supabase($c, 'POST', 'referees', ['name' => $display, 'sportlink_name' => $key, 'active' => true],
         ['Prefer: return=representation']);
     $refs[] = $row[0];
     $created++;
     return $row[0]['id'];
+}
+
+/** Onthoud bij een bestaande scheidsrechter onder welke naam hij in Sportlink staat. */
+function link_sportlink(array $c, array &$refs, string $id, string $key): string
+{
+    supabase($c, 'PATCH', 'referees?id=eq.' . rawurlencode($id), ['sportlink_name' => $key], ['Prefer: return=minimal']);
+    foreach ($refs as &$r) if ($r['id'] === $id) $r['sportlink_name'] = $key;
+    unset($r);
+    return $id;
 }
 
 // ---------- Bijwerken ----------

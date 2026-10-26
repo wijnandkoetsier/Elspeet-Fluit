@@ -251,10 +251,54 @@ end $$;
 revoke execute on function public.request_signup(text, text, text, text) from public;
 grant execute on function public.request_signup(text, text, text, text) to anon, authenticated;
 
+-- Twee scheidsrechters die dezelfde persoon zijn samenvoegen (bijv. één uit Sportlink en één via een
+-- aanmelding). Alles van p_drop gaat naar p_keep: aanstellingen, beschikbaarheid, aanbiedingen en meldingen;
+-- lege gegevens van p_keep worden aangevuld. Alleen voor planners.
+create or replace function public.merge_referees(p_keep uuid, p_drop uuid, p_name text default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare k referees; d referees;
+begin
+  if not is_planner() then raise exception 'Alleen planners kunnen scheidsrechters samenvoegen.'; end if;
+  if p_keep = p_drop then return; end if;
+  select * into k from referees where id = p_keep;
+  select * into d from referees where id = p_drop;
+  if k.id is null or d.id is null then raise exception 'Scheidsrechter niet gevonden.'; end if;
+  if k.user_id is not null and d.user_id is not null then
+    raise exception 'Beide hebben al een eigen account. Samenvoegen kan dan niet.';
+  end if;
+  perform set_config('app.merging_referees', 'on', true);
+  update matches set referee_id = p_keep where referee_id = p_drop;
+  delete from availability a where a.referee_id = p_drop
+    and exists (select 1 from availability b where b.referee_id = p_keep and b.date = a.date);
+  update availability set referee_id = p_keep where referee_id = p_drop;
+  delete from offers o where o.referee_id = p_drop
+    and exists (select 1 from offers x where x.referee_id = p_keep and x.match_id = o.match_id);
+  update offers set referee_id = p_keep where referee_id = p_drop;
+  update notifications set referee_id = p_keep where referee_id = p_drop;
+  delete from referees where id = p_drop;
+  update referees set
+    name = coalesce(nullif(trim(p_name), ''), name),
+    email = coalesce(email, d.email),
+    phone = coalesce(phone, d.phone),
+    user_id = coalesce(user_id, d.user_id),
+    sportlink_name = coalesce(sportlink_name, d.sportlink_name),
+    pref_categories = case when cardinality(pref_categories) = 0 then d.pref_categories else pref_categories end,
+    invite_planner = invite_planner or d.invite_planner,
+    is_referee = is_referee or d.is_referee
+  where id = p_keep;
+  perform set_config('app.merging_referees', 'off', true);
+end $$;
+revoke execute on function public.merge_referees(uuid, uuid, text) from public, anon;
+grant execute on function public.merge_referees(uuid, uuid, text) to authenticated;
+
 -- Meldingen bij wijzigingen in de planning ------------------------------------
 create or replace function public.notify_match_change() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
+  -- Samenvoegen van twee scheidsrechters (merge_referees): geen meldingen, het blijft dezelfde persoon.
+  if current_setting('app.merging_referees', true) = 'on' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
   if tg_op = 'DELETE' then
     if old.published and old.referee_id is not null then
       insert into notifications (referee_id, kind, title, body, date)

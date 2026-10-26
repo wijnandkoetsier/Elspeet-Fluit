@@ -4,6 +4,7 @@ import {
   candidates, proposeDay, availabilityDates, seasonOf, seasonCounts, csvMatches, toCSV, matchEnd, fromMin, toMin,
   assignmentIssue, defaultDuration, fieldName, overlaps, isAwayJo7, needsReferee,
   categoryGroups, prefState, togglePrefGroup, togglePrefTeam, prefLabel, upgradeCategory, upgradePrefs,
+  sameName, likelyDuplicates, mergePlan,
 } from './logic.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -843,6 +844,12 @@ function importSheet() {
 }
 
 // ---------- Planner: scheidsrechters ----------
+// Paren die de planner als "niet dezelfde persoon" heeft aangemerkt (per toestel).
+const NOT_DUP_KEY = 'scheidsapp-niet-dubbel';
+function notDuplicates() {
+  try { return JSON.parse(localStorage.getItem(NOT_DUP_KEY) || '[]'); } catch { return []; }
+}
+
 function scheidsrechters(view) {
   const counts = seasonCounts(state.data.matches, todayISO());
   const season = seasonOf(todayISO()).label;
@@ -869,7 +876,22 @@ function scheidsrechters(view) {
         </article>`;
   };
   const signups = state.data.signups || [];
+  const skip = new Set(notDuplicates());
+  const dups = likelyDuplicates(state.data.referees).filter(([a, b]) => !skip.has([a.id, b.id].sort().join('|')));
+  const who = (r) => `<b>${esc(r.name)}</b><small>${[r.sportlink_name ? 'uit Sportlink' : '', r.email ? esc(r.email) : 'geen e-mail', r.user_id ? 'heeft ingelogd' : ''].filter(Boolean).join(' · ')}</small>`;
   view.innerHTML = `
+    ${dups.length ? `<section class="card day-list dups">
+      <header class="day-head"><h2>Mogelijk dubbel</h2><span class="pills"><span class="pill issue">${dups.length}</span></span></header>
+      <p class="muted list-intro">Deze namen lijken op elkaar. Is het dezelfde persoon, voeg ze dan samen.</p>
+      ${dups.map(([a, b]) => `
+        <div class="dup">
+          <div class="dup-names"><span>${who(a)}</span><span>${who(b)}</span></div>
+          <div class="signup-actions">
+            <button class="btn primary" data-merge="${a.id}|${b.id}">Samenvoegen</button>
+            <button class="btn ghost" data-notdup="${[a.id, b.id].sort().join('|')}">Niet dezelfde</button>
+          </div>
+        </div>`).join('')}
+    </section>` : ''}
     ${signups.length ? `<section class="card day-list signups">
       <header class="day-head"><h2>Aanmeldingen</h2><span class="pills"><span class="pill open">${plural(signups.length, 'nieuwe', 'nieuwe')}</span></span></header>
       ${signups.map((a) => `
@@ -899,13 +921,30 @@ function scheidsrechters(view) {
     download(`seizoen-${season.replace('/', '-')}.csv`, '﻿' + toCSV(rows), 'text/csv');
   };
   view.querySelectorAll('[data-edit]').forEach((el) => el.onclick = () => refForm(state.data.referees.find((r) => r.id === el.dataset.edit)));
-  view.querySelectorAll('[data-accept]').forEach((b) => b.onclick = () => {
+  view.querySelectorAll('[data-accept]').forEach((b) => b.onclick = async () => {
     const a = signups.find((x) => x.id === b.dataset.accept);
+    const existing = await existingForNewPerson(a.name);
+    if (!existing) return;
     b.disabled = true;
     act(async () => {
-      await store.saveReferee({ name: a.name, email: a.email, phone: a.phone || null, active: true, is_referee: true, invite_planner: false, pref_categories: [], avoid_categories: [] });
+      if (existing === 'new') {
+        await store.saveReferee({ name: a.name, email: a.email, phone: a.phone || null, active: true, is_referee: true, invite_planner: false, pref_categories: [], avoid_categories: [] });
+      } else {
+        // Bestaande (bijv. uit Sportlink) aanvullen; de volledigste naam blijft staan.
+        await store.saveReferee({ id: existing.id, email: a.email, phone: existing.phone || a.phone || null, name: mergePlan(existing, a).name, active: true });
+      }
       await store.deleteSignup(a.id);
     }, `${a.name} is toegevoegd en kan nu inloggen met ${a.email}.`);
+  });
+  view.querySelectorAll('[data-merge]').forEach((b) => b.onclick = async () => {
+    const [x, y] = b.dataset.merge.split('|').map((id) => state.data.referees.find((r) => r.id === id));
+    const plan = mergePlan(x, y);
+    if (!await ask(`${x.name} en ${y.name} samenvoegen tot ${plan.name}? Aanstellingen, beschikbaarheid en meldingen van allebei komen bij één persoon.`, 'Samenvoegen')) return;
+    act(() => store.mergeReferees(plan.keep.id, plan.drop.id, plan.name), `Samengevoegd tot ${plan.name}`);
+  });
+  view.querySelectorAll('[data-notdup]').forEach((b) => b.onclick = () => {
+    try { localStorage.setItem(NOT_DUP_KEY, JSON.stringify([...notDuplicates(), b.dataset.notdup])); } catch {}
+    render();
   });
   view.querySelectorAll('[data-reject]').forEach((b) => b.onclick = async () => {
     const a = signups.find((x) => x.id === b.dataset.reject);
@@ -999,6 +1038,17 @@ function refForm(r) {
       if (!row.name) { err.textContent = 'Vul een naam in.'; err.hidden = false; return; }
       if (r.id) row.id = r.id;
       else row.invite_planner = planner;
+      if (!r.id) {
+        // Nieuwe persoon die misschien al uit Sportlink komt: koppelen in plaats van dubbel.
+        const existing = await existingForNewPerson(row.name);
+        if (!existing) return;
+        if (existing !== 'new') {
+          row.id = existing.id;
+          row.name = mergePlan(existing, row).name;
+          delete row.invite_planner;
+          if (planner) row.invite_planner = true;
+        }
+      }
       const plannerChanged = r.id && planner !== isPlannerRef(r);
       // Keep the sheet open until the save really worked, so a failure is visible.
       btn.disabled = true; btn.textContent = 'Bezig met opslaan…'; err.hidden = true;
@@ -1712,6 +1762,29 @@ window.addEventListener('keydown', (e) => {
   const top = [...document.querySelectorAll('.sheet-wrap')].pop();
   if (top) top.close();
 });
+
+// Keuze uit een paar knoppen; geeft de waarde van de gekozen knop, of null bij sluiten.
+function choose(title, text, options) {
+  return new Promise((resolve) => {
+    sheet(`<h3>${esc(title)}</h3>${text ? `<p class="muted">${text}</p>` : ''}
+      <div class="choose">${options.map(([v, label, primary]) => `<button class="btn block ${primary ? 'primary' : ''}" data-choice="${esc(v)}">${esc(label)}</button>`).join('')}</div>`, (el, close) => {
+      el.onRemove = () => resolve(null);
+      el.querySelectorAll('[data-choice]').forEach((b) => b.onclick = () => { resolve(b.dataset.choice); close(); });
+    });
+  });
+}
+
+// Staat deze persoon er al (zonder e-mail, bijv. uit Sportlink)? Dan koppelen in plaats van dubbel toevoegen.
+// Geeft de bestaande scheidsrechter terug, 'new' voor toch nieuw, of null bij annuleren.
+async function existingForNewPerson(name) {
+  const hits = state.data.referees.filter((r) => !r.email && !r.user_id && sameName(r.name, name));
+  if (!hits.length) return 'new';
+  const options = hits.map((r) => [r.id, `Koppelen aan ${r.name}${r.sportlink_name ? ' (uit Sportlink)' : ''}`, true]);
+  const pick = await choose('Staat deze persoon er al?',
+    `Er ${hits.length === 1 ? 'staat al een scheidsrechter' : 'staan al scheidsrechters'} met een vergelijkbare naam, nog zonder e-mailadres. Koppel je ${esc(name)} daaraan, dan komen e-mail en telefoon erbij en ontstaat er geen dubbele.`,
+    [...options, ['new', 'Nee, nieuw toevoegen', false]]);
+  return pick === null ? null : pick === 'new' ? 'new' : hits.find((r) => r.id === pick);
+}
 
 // In-page confirmation (native confirm() is blocked in some embedded views).
 function ask(message, okLabel = 'OK') {
