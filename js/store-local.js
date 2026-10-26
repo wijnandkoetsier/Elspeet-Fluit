@@ -1,7 +1,7 @@
 // Demo store: everything in localStorage on this device. Same interface as store-supabase.js.
 import { matchChangeNotifications, unavailableNotification, matchLabel } from './logic.js';
 
-const KEY = 'scheidsapp-demo-v11';
+const KEY = 'scheidsapp-demo-v12';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function seed() {
@@ -53,13 +53,18 @@ function seed() {
     body: `Voor ${new Date(d2 + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })} weten we nog niet of je kunt fluiten.`,
     date: d2, created_at: new Date(Date.now() - 2 * 3600000).toISOString(), read_at: null,
   }];
-  return { matches, referees, availability, notifications, offers: [], user: null };
+  // Een aanmelding van een nieuwe scheidsrechter, zoals die via het inlogscherm binnenkomt.
+  const signups = [{ id: uid(), name: 'Femke Hoekstra', email: 'femke@example.nl', phone: '06 24681357', note: 'Fluit graag pupillen', created_at: new Date(Date.now() - 3600000).toISOString() }];
+  notifications.push({ id: uid(), referee_id: null, to_planners: true, kind: 'signup', title: 'Nieuwe aanmelding: Femke Hoekstra',
+    body: 'femke@example.nl · 06 24681357 · Fluit graag pupillen', date: null, created_at: signups[0].created_at, read_at: null });
+  return { matches, referees, availability, notifications, offers: [], signups, user: null };
 }
 
 function load() {
   try {
     const db = JSON.parse(localStorage.getItem(KEY)) || seed();
     db.offers ||= [];
+    db.signups ||= [];
     return db;
   } catch { return seed(); }
 }
@@ -104,7 +109,7 @@ export function createLocalStore() {
     async loadAll() {
       const me = db.user?.referee_id;
       const notifications = db.notifications.filter((n) => n.referee_id === me || (n.to_planners && isPlanner()));
-      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications, offers: [...db.offers], lastSync: db.lastSync || null };
+      if (isPlanner()) return { matches: [...db.matches], referees: [...db.referees], availability: [...db.availability], notifications, offers: [...db.offers], signups: [...db.signups], lastSync: db.lastSync || null };
       return {
         matches: [...db.matches],
         referees: db.referees.filter((r) => r.id === me),
@@ -136,6 +141,18 @@ export function createLocalStore() {
       else db.referees.push({ active: true, is_referee: true, pref_categories: [], avoid_categories: [], user_id: null, ...r, is_planner: !!r.invite_planner, id: uid() });
       save();
     },
+    // Zelfde regels als request_signup() in schema.sql.
+    async requestSignup({ name, email, phone, note }) {
+      const e = String(email || '').trim().toLowerCase();
+      if (db.referees.some((r) => (r.email || '').toLowerCase() === e)) return 'bekend';
+      if (db.signups.some((r) => r.email === e)) return 'al_aangemeld';
+      db.signups.push({ id: uid(), name: name.trim(), email: e, phone: phone || null, note: note || null, created_at: new Date().toISOString() });
+      notify([{ referee_id: null, to_planners: true, kind: 'signup', title: `Nieuwe aanmelding: ${name.trim()}`,
+        body: [e, phone, note].filter(Boolean).join(' · '), date: null, match_id: null }]);
+      save();
+      return 'ok';
+    },
+    async deleteSignup(id) { db.signups = db.signups.filter((r) => r.id !== id); save(); },
     async deleteReferee(id) {
       db.referees = db.referees.filter((r) => r.id !== id);
       db.matches.forEach((m) => { if (m.referee_id === id) { m.referee_id = null; m.published = false; } });

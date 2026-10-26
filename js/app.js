@@ -207,7 +207,55 @@ function render() {
 }
 
 // ---------- Login ----------
+// Aanmelden als nieuwe scheidsrechter, vanaf het inlogscherm (zonder account).
+function signupView(l) {
+  if (l.step === 'signup-done') {
+    return `
+      <section class="card login">
+        <h2>${l.result === 'ok' ? 'Aanmelding verstuurd' : l.result === 'bekend' ? 'Je bent al bekend' : 'Je bent al aangemeld'}</h2>
+        <p>${l.result === 'ok'
+          ? `Bedankt, ${esc(l.name)}. De planner krijgt je aanmelding en voegt je toe. Daarna log je hier in met <b>${esc(l.email)}</b>.`
+          : l.result === 'bekend'
+            ? `<b>${esc(l.email)}</b> staat al bij de club. Je kunt meteen inloggen.`
+            : `Er staat al een aanmelding voor <b>${esc(l.email)}</b>. De planner neemt contact met je op.`}</p>
+        <button class="btn primary block" id="signup-back">Naar inloggen</button>
+      </section>`;
+  }
+  return `
+    <section class="card login">
+      <h2>Aanmelden als scheidsrechter</h2>
+      <p>Wil je fluiten bij VV Elspeet? Vul je gegevens in. De planner krijgt een melding en voegt je toe.</p>
+      <form id="signup-form" class="form">
+        <label>Naam<input name="name" required minlength="2" maxlength="80" autocomplete="name" value="${esc(l.name || '')}"></label>
+        <label>E-mail <small class="muted">hiermee log je straks in</small><input type="email" name="email" required maxlength="200" autocomplete="email" value="${esc(l.email || '')}"></label>
+        <label>Telefoon <small class="muted">zodat de planner je kan bellen of appen</small><input type="tel" name="phone" maxlength="30" autocomplete="tel" placeholder="06 12345678"></label>
+        <label>Opmerking <small class="muted">bijv. wat je graag fluit of sinds wanneer</small><textarea name="note" rows="2" maxlength="500"></textarea></label>
+        <button class="btn primary block">Aanmelding versturen</button>
+      </form>
+      <button class="btn ghost block" id="signup-back">Ik heb al een account</button>
+    </section>`;
+}
+
+function bindSignup() {
+  const back = $('#signup-back');
+  if (back) back.onclick = () => { state.login = { email: state.login?.email || '' }; render(); };
+  const f = $('#signup-form');
+  if (f) f.onsubmit = (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    const row = { name: d.name.trim(), email: d.email.trim().toLowerCase(), phone: d.phone.trim(), note: d.note.trim() };
+    act(async () => {
+      const result = await store.requestSignup(row);
+      state.login = { step: 'signup-done', result, name: row.name, email: row.email };
+      render();
+    });
+  };
+}
+
+const signupButton = '<button class="btn ghost block" id="to-signup">Nieuw? Meld je aan als scheidsrechter</button>';
+
 function loginView() {
+  if (state.login?.step?.startsWith('signup')) return signupView(state.login);
   if (store.mode === 'demo') {
     const people = state.people || [];
     return `
@@ -219,6 +267,7 @@ function loginView() {
           <select id="demo-ref" aria-label="Scheidsrechter">${people.filter((r) => !r.is_planner).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>
           <button class="btn" data-login="referee">Als scheidsrechter</button>
         </div>
+        ${signupButton}
       </section>`;
   }
   const l = state.login;
@@ -243,10 +292,15 @@ function loginView() {
         <input type="email" name="email" required placeholder="naam@voorbeeld.nl" autocomplete="email" value="${esc(l?.email || '')}" aria-label="E-mailadres">
         <button class="btn primary block">Stuur code</button>
       </form>
+      ${signupButton}
     </section>`;
 }
 
 function bindLogin() {
+  bindSignup();
+  const toSignup = $('#to-signup');
+  if (toSignup) toSignup.onclick = () => { state.login = { step: 'signup', email: $('#login-form [name=email]')?.value || '' }; render(); };
+  if (state.login?.step?.startsWith('signup')) return;
   if (store.mode === 'demo') {
     if (!state.people) store.demoPeople().then((p) => { state.people = p; render(); });
     document.querySelectorAll('[data-login]').forEach((b) => b.onclick = () =>
@@ -814,7 +868,23 @@ function scheidsrechters(view) {
           ${count ? `<div class="count" title="Aanstellingen seizoen ${season}">${counts[r.id] || 0}<small>dit seizoen</small></div>` : ''}
         </article>`;
   };
+  const signups = state.data.signups || [];
   view.innerHTML = `
+    ${signups.length ? `<section class="card day-list signups">
+      <header class="day-head"><h2>Aanmeldingen</h2><span class="pills"><span class="pill open">${plural(signups.length, 'nieuwe', 'nieuwe')}</span></span></header>
+      ${signups.map((a) => `
+        <article class="signup" data-signup="${a.id}">
+          <div class="avatar">${esc(initials(a.name))}</div>
+          <div class="body"><b>${esc(a.name)}</b>
+            <div class="meta">${esc(a.email)}${a.phone ? ` · ${esc(a.phone)}` : ''} · ${esc(timeAgo(a.created_at))}</div>
+            ${a.note ? `<p class="signup-note">${esc(a.note)}</p>` : ''}
+            ${a.phone ? contactButtons(a.phone) : ''}
+            <div class="signup-actions">
+              <button class="btn primary" data-accept="${a.id}">Toevoegen als scheidsrechter</button>
+              <button class="btn ghost" data-reject="${a.id}">Afwijzen</button>
+            </div></div>
+        </article>`).join('')}
+    </section>` : ''}
     <div class="actions top"><button class="btn primary" id="add-ref">＋ Toevoegen</button>
       <button class="btn ghost icon-label" id="export-season">${ICONS.download}Seizoenscijfers</button></div>
     <div class="list">
@@ -829,6 +899,19 @@ function scheidsrechters(view) {
     download(`seizoen-${season.replace('/', '-')}.csv`, '﻿' + toCSV(rows), 'text/csv');
   };
   view.querySelectorAll('[data-edit]').forEach((el) => el.onclick = () => refForm(state.data.referees.find((r) => r.id === el.dataset.edit)));
+  view.querySelectorAll('[data-accept]').forEach((b) => b.onclick = () => {
+    const a = signups.find((x) => x.id === b.dataset.accept);
+    b.disabled = true;
+    act(async () => {
+      await store.saveReferee({ name: a.name, email: a.email, phone: a.phone || null, active: true, is_referee: true, invite_planner: false, pref_categories: [], avoid_categories: [] });
+      await store.deleteSignup(a.id);
+    }, `${a.name} is toegevoegd en kan nu inloggen met ${a.email}.`);
+  });
+  view.querySelectorAll('[data-reject]').forEach((b) => b.onclick = async () => {
+    const a = signups.find((x) => x.id === b.dataset.reject);
+    if (!await ask(`Aanmelding van ${a.name} afwijzen? De aanmelding wordt verwijderd.`, 'Afwijzen')) return;
+    act(() => store.deleteSignup(a.id), 'Aanmelding afgewezen');
+  });
 }
 
 // Planner now, or will be after the first login.
@@ -1377,7 +1460,7 @@ function profiel(view) {
 }
 
 // ---------- Meldingen ----------
-const KIND_ICON = { assigned: ICONS.check, changed: ICONS.refresh, withdrawn: ICONS.cross, cancelled: ICONS.cross, unavailable: ICONS.warn, offer: ICONS.hand, reminder: ICONS.calendar };
+const KIND_ICON = { signup: ICONS.people, assigned: ICONS.check, changed: ICONS.refresh, withdrawn: ICONS.cross, cancelled: ICONS.cross, unavailable: ICONS.warn, offer: ICONS.hand, reminder: ICONS.calendar };
 
 function notifRow(n) {
   return `
@@ -1393,6 +1476,7 @@ function bindNotifRows(view) {
     const n = state.data.notifications.find((x) => x.id === row.dataset.n);
     if (!n.read_at) act(() => store.markRead([n.id]));
     if (n.kind === 'reminder') location.hash = 'beschikbaarheid';
+    else if (n.kind === 'signup') location.hash = 'scheidsrechters';
     else if (n.to_planners && n.date) { state.day = n.date; location.hash = 'planning'; }
     else if (n.kind !== 'cancelled' && n.kind !== 'withdrawn') location.hash = 'mijn';
   });
@@ -1536,7 +1620,7 @@ function plannerOverzicht(view) {
       ${menuLink('wedstrijden', ICONS.ball, 'Wedstrijden', 'Alle wedstrijden bekijken, toevoegen of wijzigen',
         `${pill(coming.length, 'komend', '')}`)}
       ${menuLink('scheidsrechters', ICONS.people, 'Scheidsen', 'Scheidsrechters, contactgegevens en aanstellingen',
-        `${pill(referees.filter((r) => r.active !== false && r.is_referee !== false).length, 'actief', '')}`)}
+        `${(state.data.signups || []).length ? `<span class="pill open">${plural(state.data.signups.length, 'aanmelding', 'aanmeldingen')}</span>` : ''}${pill(referees.filter((r) => r.active !== false && r.is_referee !== false).length, 'actief', '')}`)}
       ${menuLink('meldingen', ICONS.bell, 'Meldingen', 'Afmeldingen, wijzigingen en aanbiedingen',
         `${pill(offered, 'aanbod', 'done')}${pill(unread, 'nieuw')}`)}
     </section>

@@ -103,7 +103,7 @@ export function createSupabaseStore(url, key) {
     async signOut() { await sb.auth.signOut(); user = null; emit(); },
     async loadAll() {
       const planner = user?.role === 'planner';
-      const [matches, referees, availability, notifications, plannerIds, syncRuns, offers] = await Promise.all([
+      const [matches, referees, availability, notifications, plannerIds, syncRuns, offers, signups] = await Promise.all([
         sb.from('matches').select('*').order('date').order('time'),
         sb.from('referees').select('*').order('name'),
         sb.from('availability').select('*'),
@@ -111,6 +111,7 @@ export function createSupabaseStore(url, key) {
         planner ? sb.rpc('planner_referees') : Promise.resolve({ data: [] }),
         planner ? sb.from('sync_runs').select('*').order('at', { ascending: false }).limit(1) : Promise.resolve({ data: [] }),
         sb.from('offers').select('*'),
+        planner ? sb.from('signup_requests').select('*').order('created_at') : Promise.resolve({ data: [] }),
       ]);
       const plannerSet = new Set(check(plannerIds) || []);
       return {
@@ -120,8 +121,14 @@ export function createSupabaseStore(url, key) {
         notifications: check(notifications),
         lastSync: (check(syncRuns) || [])[0] || null,
         offers: check(offers) || [],
+        signups: check(signups) || [],
       };
     },
+    // Nieuwe scheidsrechter meldt zich aan (zonder account). Antwoord: 'ok', 'bekend' of 'al_aangemeld'.
+    async requestSignup({ name, email, phone, note }) {
+      return check(await sb.rpc('request_signup', { p_name: name, p_email: email, p_phone: phone || null, p_note: note || null }));
+    },
+    async deleteSignup(id) { check(await sb.from('signup_requests').delete().eq('id', id)); },
     // Ask our own hosting (hosting/sportlink-sync.php) to fetch Sportlink now, as the logged-in planner.
     async syncSportlink(url) {
       const { data } = await sb.auth.getSession();
