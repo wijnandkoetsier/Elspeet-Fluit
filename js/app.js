@@ -54,14 +54,10 @@ async function boot() {
 }
 
 // ---------- Wisselen tussen planner- en scheidsrechtersweergave ----------
-// For everyone who is planner and referee ("Allebei"): look at the app the way a referee sees it.
+// For every planner (also one who doesn't referee): look at the app the way a referee sees it.
 // It only changes what is shown; the database rights stay those of a planner.
 const VIEW_KEY = 'scheidsapp-weergave';
-const canSwitchView = () => {
-  if (!store.user || store.user.role !== 'planner' || !store.user.referee_id) return false;
-  const me = (state.raw?.referees || []).find((r) => r.id === store.user.referee_id);
-  return !!me && me.is_referee !== false;
-};
+const canSwitchView = () => !!store.user && store.user.role === 'planner';
 function viewRole() {
   if (!store.user) return null;
   if (store.user.role !== 'planner') return 'referee';
@@ -1253,7 +1249,7 @@ function selfRefCard(ref) {
       <h3>Zelf fluiten</h3>
       <label class="check"><input type="checkbox" id="self-ref" ${on ? 'checked' : ''}> Ik fluit zelf ook</label>
       <p class="muted">${on
-        ? 'Uitzetten als je alleen plant: dan word je niet meer ingepland en verdwijnen Mijn fluiten, beschikbaarheid en voorkeuren.'
+        ? 'Uitzetten als je alleen plant: dan word je niet meer ingepland en verdwijnen Mijn fluiten, beschikbaarheid en voorkeuren. De schakelaar Planner | Scheids blijft, zodat je kunt zien wat scheidsrechters zien.'
         : 'Je bent nu alleen planner. Zet dit aan als je zelf ook wilt fluiten.'}</p>
     </section>`;
 }
@@ -1274,7 +1270,6 @@ function bindSelfRef(ref) {
       const r = list?.find((x) => x.id === ref.id);
       if (r) r.is_referee = on;
     }
-    if (!on) { try { localStorage.setItem(VIEW_KEY, 'planner'); } catch {} }
     derive();
     render();
     act(() => store.saveReferee({ id: ref.id, is_referee: on }), on ? 'Je fluit zelf ook weer mee' : 'Zelf fluiten staat uit');
