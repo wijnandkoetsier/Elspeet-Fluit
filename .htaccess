@@ -1,7 +1,7 @@
 # Instellingen voor scheids.vv-elspeet.nl (Apache bij Vimexx). Wordt mee geüpload door .github/workflows/vimexx.yml.
 
-# Eigen 404 in plaats van de foutpagina van de hoofdsite (die hier niet bestaat en een 500 gaf).
-ErrorDocument 404 default
+# Eigen 404-pagina in plaats van die van de hoofdsite (die hier niet bestaat en een 500 gaf).
+ErrorDocument 404 /404.html
 
 # Het bestand waarmee de upload bijhoudt wat er al staat, hoeft niemand te zien.
 <Files ".ftp-deploy-sync-state.json">
