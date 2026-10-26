@@ -8,7 +8,7 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 export const SPORTLINK_SYNC_URL = 'https://scheids.vv-elspeet.nl/sportlink/sportlink-sync.php';
 
 // Publieke VAPID-sleutel voor pushmeldingen (zie README, stap Pushmeldingen). Leeg = geen push.
-export const VAPID_PUBLIC_KEY = '';
+export const VAPID_PUBLIC_KEY = 'BFLmQV-DRbPB3PA5DFlRNNHe38iLD27hU11PYqg0gsd9UMzbZF1Lt7Bcxofeypb3Lo9aFPDvAZTlEgN3a7KmUDI';
 
 export const APP_NAME = 'Scheids VV Elspeet';
 export const CLUB_NAME = 'VV Elspeet';
