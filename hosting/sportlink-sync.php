@@ -1,6 +1,6 @@
 <?php
 /**
- * Elspeet Fluit – Sportlink-koppeling.
+ * Scheids VV Elspeet – Sportlink-koppeling.
  *
  * Haalt het programma met thuiswedstrijden op bij de Sportlink Club.Dataservice en werkt de
  * wedstrijden in de database (Supabase) bij: nieuw → toevoegen, gewijzigd → bijwerken,

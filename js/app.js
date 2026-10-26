@@ -176,7 +176,8 @@ function render() {
   const nav = $('#nav');
   const view = $('#view');
   $('#demo-badge').hidden = store.mode !== 'demo';
-  $('#club').textContent = `${CLUB_NAME} · ${viewRole() === 'planner' ? 'planning' : 'scheidsrechters'}`;
+  // The club is already in the app name ("Scheids VV Elspeet"): the line below only says which part you are in.
+  $('#club').textContent = viewRole() === 'planner' ? 'Planning' : 'Scheidsrechters';
   const sw = $('#view-switch');
   sw.hidden = !canSwitchView();
   if (!sw.hidden) {

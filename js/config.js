@@ -10,7 +10,7 @@ export const SPORTLINK_SYNC_URL = 'https://wijnandkoetsier.nl/elspeet-fluit/spor
 // Publieke VAPID-sleutel voor pushmeldingen (zie README, stap Pushmeldingen). Leeg = geen push.
 export const VAPID_PUBLIC_KEY = '';
 
-export const APP_NAME = 'Elspeet Fluit';
+export const APP_NAME = 'Scheids VV Elspeet';
 export const CLUB_NAME = 'VV Elspeet';
 // KNVB-categorieën (O = onder, zoals in Sportlink: "Elspeet O13-1").
 export const CATEGORIES = ['O7', 'O8', 'O9', 'O10', 'O11', 'O12', 'O13', 'O15', 'O17', 'O19',
