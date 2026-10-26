@@ -1,0 +1,16 @@
+# Instellingen voor scheids.vv-elspeet.nl (Apache bij Vimexx). Wordt mee geüpload door .github/workflows/vimexx.yml.
+
+# Eigen 404 in plaats van de foutpagina van de hoofdsite (die hier niet bestaat en een 500 gaf).
+ErrorDocument 404 default
+
+# Het bestand waarmee de upload bijhoudt wat er al staat, hoeft niemand te zien.
+<Files ".ftp-deploy-sync-state.json">
+  Require all denied
+</Files>
+
+# Altijd even bij de server navragen of er een nieuwe versie is, zodat updates meteen op de telefoons komen.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|css|webmanifest)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

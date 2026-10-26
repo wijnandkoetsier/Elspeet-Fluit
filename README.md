@@ -70,6 +70,15 @@ De app staat op **https://scheids.vv-elspeet.nl** (hosting van VV Elspeet bij Vi
 5. Supabase → **Authentication → URL Configuration**: Site URL en Redirect URLs op `https://scheids.vv-elspeet.nl/`.
 6. In `elspeet-fluit-config.php` van de Sportlink-koppeling `https://scheids.vv-elspeet.nl` toevoegen aan `allowed_origins`.
 
+**Sportlink-koppeling op Vimexx.** De workflow zet `hosting/sportlink-sync.php` mee online als
+`https://scheids.vv-elspeet.nl/sportlink/sportlink-sync.php`. Eenmalig zelf doen:
+1. Zet `elspeet-fluit-config.php` via DirectAdmin → Bestandsbeheer in `domains/vv-elspeet.nl/` (naast `public_html`, niet erin).
+2. Test: `https://scheids.vv-elspeet.nl/sportlink/sportlink-sync.php?token=JOUW_SYNC_TOKEN&mode=test`.
+3. DirectAdmin → **Cronjobs**, elk uur, opdracht:
+   `/usr/local/bin/php /home/GEBRUIKER/domains/vv-elspeet.nl/public_html/scheids/sportlink/sportlink-sync.php`
+   (vanaf de opdrachtregel is geen token nodig).
+4. `SPORTLINK_SYNC_URL` in `js/config.js` op het nieuwe adres zetten en de cronjob bij TransIP verwijderen.
+
 Daarnaast publiceert `.github/workflows/pages.yml` de app ook nog op GitHub Pages.
 
 ### 3. Eerste planner aanwijzen

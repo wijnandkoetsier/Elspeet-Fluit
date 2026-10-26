@@ -25,6 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # De Sportlink-koppeling komt op https://scheids.vv-elspeet.nl/sportlink/sportlink-sync.php.
+      # Het geheime elspeet-fluit-config.php zet je zelf één keer naast public_html (zie README).
+      - name: Sportlink-koppeling meenemen
+        run: mkdir -p sportlink && cp hosting/sportlink-sync.php sportlink/
       - name: Upload naar Vimexx
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
